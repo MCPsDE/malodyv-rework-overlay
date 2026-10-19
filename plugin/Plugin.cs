@@ -29,6 +29,7 @@ public sealed class Plugin : BasePlugin
     {
         try
         {
+            MainThreadDispatcher.Initialize();
             StartCompanion();
         }
         catch (Exception exception)
@@ -381,11 +382,7 @@ internal static class SelectionPipe
 
     public static void PublishCurrentChartDelayed()
     {
-        _ = Task.Run(async () =>
-        {
-            await Task.Delay(150);
-            PublishCurrentChart();
-        });
+        MainThreadDispatcher.PostDelayed(PublishCurrentChart);
     }
 
     private static void ResolvePlayInfoProperties()

@@ -12,6 +12,8 @@
     <BepInExDir Condition="'$(BepInExDir)' == ''">E:\Program Files (x86)\Steam\steamapps\common\MalodyV\BepInEx</BepInExDir>
   </PropertyGroup>
   <ItemGroup>
+    <Reference Include="Il2Cppmscorlib"><HintPath>$(BepInExDir)\interop\Il2Cppmscorlib.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine.CoreModule"><HintPath>$(BepInExDir)\interop\UnityEngine.CoreModule.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="BepInEx.Core"><HintPath>$(BepInExDir)\core\BepInEx.Core.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="BepInEx.Unity.IL2CPP"><HintPath>$(BepInExDir)\core\BepInEx.Unity.IL2CPP.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="0Harmony"><HintPath>$(BepInExDir)\core\0Harmony.dll</HintPath><Private>false</Private></Reference>
