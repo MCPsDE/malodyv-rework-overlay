@@ -69,8 +69,6 @@ internal sealed class OverlaySettings
     public double Height { get; set; } = 610;
     public string ToggleHotkey { get; set; } = "Ctrl+Shift+F8";
     public string Language { get; set; } = "zh-CN";
-    public string PythonExecutable { get; set; } = "python";
-    public string ToolkitRoot { get; set; } = Path.Combine(AppContext.BaseDirectory, "Data", "Toolkit");
     public bool UpdateCheckEnabled { get; set; } = true;
     public string UpdateManifestUrl { get; set; } =
         "https://raw.githubusercontent.com/MCPsDE/malodyv-rework-overlay/main/manifest.json";

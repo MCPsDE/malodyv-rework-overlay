@@ -1,31 +1,33 @@
+using System.Globalization;
 using System.Runtime.InteropServices;
-using System.Text.Json;
 using System.Windows;
+using System.Windows.Input;
 using System.Windows.Interop;
+using System.Windows.Media;
 
 namespace MalodyV.ReworkOverlay;
 
 public partial class OverlayWindow : Window
 {
     private const int GwlExStyle = -20;
-    private const int WsExTransparent = 0x20;
-    private const int WsExLayered = 0x80000;
+    private const long WsExTransparent = 0x20;
+    private const long WsExLayered = 0x80000;
+    private const double ResizeGripSize = 44;
     private readonly OverlayRuntime _runtime;
     private readonly OverlaySettings _settings;
     private bool _browserReady;
-    private bool _dragging;
-    private bool _resizing;
+    private PointerOperation _pointerOperation;
+    private Point _lastPointerScreen;
 
-    private const string OverlayInteractionScript = """
+    private enum PointerOperation
+    {
+        None,
+        Drag,
+        Resize,
+    }
+
+    private const string OverlayLayoutScript = """
         (() => {
-            const bridge = window.chrome && window.chrome.webview;
-            if (!bridge) return;
-            let dragEnabled = true;
-            let activeGesture = null;
-            bridge.addEventListener('message', event => {
-                if (event.data && event.data.type === 'settings')
-                    dragEnabled = Boolean(event.data.dragEnabled);
-            });
             const install = () => {
                 if (!document.body || document.getElementById('overlay-resize-grip')) return;
                 const style = document.createElement('style');
@@ -33,21 +35,18 @@ public partial class OverlayWindow : Window
                     .dashboard { width:100% !important; min-width:0 !important; max-width:none !important;
                         height:100% !important; min-height:0 !important; align-content:stretch !important;
                         grid-template-rows:minmax(0,1fr) !important; gap:0 !important; }
-                    html { --card-opacity:1 !important; }
                     .main-card { width:100% !important; height:100% !important; min-height:0 !important;
                         max-height:none !important; overflow:auto !important; scrollbar-width:thin;
                         scrollbar-color:rgba(132,215,232,.42) transparent; }
                     body { user-select:none !important; -webkit-user-select:none !important; }
-                    #overlay-resize-grip { position:fixed; right:18px; bottom:18px; z-index:2147483647;
-                        width:28px; height:28px; display:flex; flex-direction:column; align-items:flex-end;
-                        justify-content:flex-end; gap:3px; padding:0 4px 4px; cursor:nwse-resize;
-                        touch-action:none; }
-                    #overlay-resize-grip span { display:block; height:2px; background:rgba(159,224,239,.78);
+                    #overlay-resize-grip { position:fixed; right:4px; bottom:4px; z-index:2147483647;
+                        width:40px; height:40px; display:flex; flex-direction:column; align-items:flex-end;
+                        justify-content:flex-end; gap:4px; padding:0 3px 3px; pointer-events:none; }
+                    #overlay-resize-grip span { display:block; height:2px; background:rgba(159,224,239,.82);
                         transform:rotate(-45deg); transform-origin:right center; border-radius:2px; }
-                    #overlay-resize-grip span:nth-child(1) { width:7px; }
-                    #overlay-resize-grip span:nth-child(2) { width:11px; }
-                    #overlay-resize-grip span:nth-child(3) { width:15px; }
-                    #overlay-resize-grip:hover span { background:#eafaff; }
+                    #overlay-resize-grip span:nth-child(1) { width:9px; }
+                    #overlay-resize-grip span:nth-child(2) { width:15px; }
+                    #overlay-resize-grip span:nth-child(3) { width:21px; }
                 `;
                 const grip = document.createElement('div');
                 grip.id = 'overlay-resize-grip';
@@ -55,35 +54,6 @@ public partial class OverlayWindow : Window
                 grip.innerHTML = '<span></span><span></span><span></span>';
                 document.head.appendChild(style);
                 document.body.appendChild(grip);
-                document.addEventListener('pointerdown', event => {
-                    if (event.button !== 0 || !dragEnabled ||
-                        (event.target instanceof Element && event.target.closest('#overlay-resize-grip'))) return;
-                    activeGesture = 'drag';
-                    document.body.setPointerCapture(event.pointerId);
-                    bridge.postMessage({ type:'drag-start' });
-                }, true);
-                grip.addEventListener('pointerdown', event => {
-                    if (event.button !== 0) return;
-                    event.preventDefault();
-                    event.stopPropagation();
-                    activeGesture = 'resize';
-                    grip.setPointerCapture(event.pointerId);
-                    bridge.postMessage({ type:'resize-start' });
-                });
-                document.addEventListener('pointermove', event => {
-                    if (!activeGesture || !(event.buttons & 1)) return;
-                    bridge.postMessage({ type:activeGesture + '-move', dx:event.movementX, dy:event.movementY });
-                }, true);
-                document.addEventListener('pointerup', () => {
-                    if (!activeGesture) return;
-                    bridge.postMessage({ type:activeGesture + '-end' });
-                    activeGesture = null;
-                }, true);
-                document.addEventListener('pointercancel', () => {
-                    if (!activeGesture) return;
-                    bridge.postMessage({ type:activeGesture + '-end' });
-                    activeGesture = null;
-                }, true);
             };
             if (document.readyState === 'loading')
                 document.addEventListener('DOMContentLoaded', install, { once:true });
@@ -105,10 +75,9 @@ public partial class OverlayWindow : Window
         {
             await CardBrowser.EnsureCoreWebView2Async();
             await CardBrowser.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync("window.REWORK_OFFLINE_MODE = true;");
-            await CardBrowser.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(OverlayInteractionScript);
+            await CardBrowser.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(OverlayLayoutScript);
             CardBrowser.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
             CardBrowser.CoreWebView2.Settings.AreDevToolsEnabled = false;
-            CardBrowser.CoreWebView2.WebMessageReceived += CoreWebView2_WebMessageReceived;
             CardBrowser.CoreWebView2.NavigationCompleted += CoreWebView2_NavigationCompleted;
             CardBrowser.CoreWebView2.Navigate(_runtime.PageUrl);
             ApplySettings();
@@ -134,17 +103,17 @@ public partial class OverlayWindow : Window
 
     public void ApplySettings()
     {
-        Left = _settings.Left - 18;
-        Top = _settings.Top - 18;
-        Width = Math.Max(MinWidth, _settings.Width);
-        Height = Math.Max(MinHeight, _settings.Height);
-        Opacity = Math.Clamp(_settings.Opacity, 0.3, 1.0);
-        Topmost = _settings.AlwaysOnTop;
-        if (IsLoaded)
+        if (_pointerOperation == PointerOperation.None)
         {
-            ApplyClickThrough();
-            SendInteractionSettings();
+            Left = _settings.Left - 18;
+            Top = _settings.Top - 18;
+            Width = Math.Max(MinWidth, _settings.Width);
+            Height = Math.Max(MinHeight, _settings.Height);
         }
+        Opacity = 1;
+        Topmost = _settings.AlwaysOnTop;
+        ApplyHitTesting();
+        ApplyCardOpacity();
     }
 
     public event Action? GeometryChanged;
@@ -152,17 +121,17 @@ public partial class OverlayWindow : Window
     protected override void OnSourceInitialized(EventArgs e)
     {
         base.OnSourceInitialized(e);
-        ApplyClickThrough();
+        ApplyHitTesting();
     }
 
-    private void ApplyClickThrough()
+    private void ApplyHitTesting()
     {
         var handle = new WindowInteropHelper(this).Handle;
         if (handle == IntPtr.Zero)
             return;
         var style = GetWindowLongPtr(handle, GwlExStyle).ToInt64();
         style |= WsExLayered;
-        style &= ~((long)WsExTransparent);
+        style &= ~WsExTransparent;
         SetWindowLongPtr(handle, GwlExStyle, new IntPtr(style));
     }
 
@@ -170,62 +139,80 @@ public partial class OverlayWindow : Window
         Microsoft.Web.WebView2.Core.CoreWebView2NavigationCompletedEventArgs e)
     {
         _browserReady = e.IsSuccess;
-        SendInteractionSettings();
+        ApplyCardOpacity();
     }
 
-    private void SendInteractionSettings()
+    private async void ApplyCardOpacity()
     {
         if (!_browserReady || CardBrowser.CoreWebView2 is null)
             return;
-        CardBrowser.CoreWebView2.PostWebMessageAsJson(JsonSerializer.Serialize(new
-        {
-            type = "settings",
-            dragEnabled = _settings.DragEnabled,
-        }));
-    }
-
-    private void CoreWebView2_WebMessageReceived(object? sender,
-        Microsoft.Web.WebView2.Core.CoreWebView2WebMessageReceivedEventArgs e)
-    {
+        var opacity = Math.Clamp(_settings.Opacity, 0.3, 1.0).ToString(CultureInfo.InvariantCulture);
+        var script = $"(() => {{ const card = document.querySelector('.main-card'); " +
+                     $"if (card) card.style.setProperty('--card-opacity', '{opacity}', 'important'); }})()";
         try
         {
-            using var message = JsonDocument.Parse(e.WebMessageAsJson);
-            var root = message.RootElement;
-            var type = root.GetProperty("type").GetString();
-            switch (type)
-            {
-                case "drag-start":
-                    _dragging = _settings.DragEnabled;
-                    break;
-                case "drag-move" when _dragging:
-                    Left += root.GetProperty("dx").GetDouble();
-                    Top += root.GetProperty("dy").GetDouble();
-                    UpdateStoredPosition();
-                    GeometryChanged?.Invoke();
-                    break;
-                case "drag-end":
-                    _dragging = false;
-                    PersistGeometry();
-                    break;
-                case "resize-start":
-                    _resizing = true;
-                    break;
-                case "resize-move" when _resizing:
-                    Width = Math.Clamp(Width + root.GetProperty("dx").GetDouble(), MinWidth, 1600);
-                    Height = Math.Clamp(Height + root.GetProperty("dy").GetDouble(), MinHeight, 1600);
-                    _settings.Width = Width;
-                    _settings.Height = Height;
-                    GeometryChanged?.Invoke();
-                    break;
-                case "resize-end":
-                    _resizing = false;
-                    PersistGeometry();
-                    break;
-            }
+            await CardBrowser.CoreWebView2.ExecuteScriptAsync(script);
         }
         catch
         {
         }
+    }
+
+    private void OverlayWindow_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (e.ChangedButton != MouseButton.Left)
+            return;
+
+        var point = e.GetPosition(this);
+        if (point.X >= ActualWidth - ResizeGripSize && point.Y >= ActualHeight - ResizeGripSize)
+            _pointerOperation = PointerOperation.Resize;
+        else if (_settings.DragEnabled)
+            _pointerOperation = PointerOperation.Drag;
+        else
+            return;
+
+        _lastPointerScreen = PointToScreen(point);
+        Mouse.Capture(this, CaptureMode.SubTree);
+        e.Handled = true;
+    }
+
+    private void OverlayWindow_PreviewMouseMove(object sender, MouseEventArgs e)
+    {
+        if (_pointerOperation == PointerOperation.None || e.LeftButton != MouseButtonState.Pressed)
+            return;
+
+        var pointerScreen = PointToScreen(e.GetPosition(this));
+        var dpi = VisualTreeHelper.GetDpi(this);
+        var deltaX = (pointerScreen.X - _lastPointerScreen.X) / dpi.DpiScaleX;
+        var deltaY = (pointerScreen.Y - _lastPointerScreen.Y) / dpi.DpiScaleY;
+        _lastPointerScreen = pointerScreen;
+
+        if (_pointerOperation == PointerOperation.Drag)
+        {
+            Left += deltaX;
+            Top += deltaY;
+            UpdateStoredPosition();
+        }
+        else
+        {
+            Width = Math.Clamp(Width + deltaX, MinWidth, 1600);
+            Height = Math.Clamp(Height + deltaY, MinHeight, 1600);
+            _settings.Width = Width;
+            _settings.Height = Height;
+        }
+
+        GeometryChanged?.Invoke();
+        e.Handled = true;
+    }
+
+    private void OverlayWindow_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        if (_pointerOperation == PointerOperation.None)
+            return;
+        _pointerOperation = PointerOperation.None;
+        Mouse.Capture(null);
+        PersistGeometry();
+        e.Handled = true;
     }
 
     private void UpdateStoredPosition()

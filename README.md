@@ -20,6 +20,12 @@ package contents into `MalodyV\BepInEx\plugins` after BepInEx has generated the
 IL2CPP interop assemblies once. The runtime installer is maintained in the
 parent Bot repository at `malodyv_tools/installer`.
 
+The companion is published self-contained and includes a portable Python 3.10
+runtime, NumPy, and the reference toolkit. Users do not need to install Python
+or configure algorithm paths. Reference metrics run in the companion process
+only after chart or analysis-mod changes; the game plugin has no frame or timer
+polling loop.
+
 When built inside the Bot repository, `Build-Release.ps1` first mirrors its
 current Bot plugin directory into this repository. A standalone clone keeps
 using its committed copy. The management window defaults to Chinese and offers
@@ -27,7 +33,8 @@ English switching, card visibility and hotkey controls, drag/resize, opacity,
 and hide-during-play behavior.
 
 The plugin reads `PlayInfo.Local` mod flags, Turbo audio speed, play mode, and
-random seed from both the song-selection screen and online-room configuration.
+random seed from both the song-selection screen and online-room configuration,
+filtering unavailable mods through MalodyV's own mode rules.
 The selected rate and chart-changing Key mods are applied before the card
 analysis: lane mappings, Less filtering, Thumb reduction, Taps conversion, and
 Holds conversion. Changes to the active mod signature invalidate the card's

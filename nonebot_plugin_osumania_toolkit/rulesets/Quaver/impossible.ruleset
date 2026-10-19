@@ -1,0 +1,126 @@
+{
+    "Accuracy": {
+        "PointsPerJudgement": [1, 0.9825, 0.65, 0.25, -1, -0.5]
+    },
+    "Description": "Simulates Quaver's scoring system",
+    "Formatting": {
+        "DecimalPlaces": "TWO"
+    },
+    "Grades": [{
+        "Accuracy": 0.6,
+        "Color": [255, 255, 80, 80],
+        "Name": "D"
+    }, {
+        "Accuracy": 0.7,
+        "Color": [255, 255, 80, 255],
+        "Name": "C"
+    }, {
+        "Accuracy": 0.8,
+        "Color": [255, 0, 80, 255],
+        "Name": "B"
+    }, {
+        "Accuracy": 0.9,
+        "Color": [255, 0, 255, 100],
+        "Name": "A"
+    }, {
+        "Accuracy": 0.95,
+        "Color": [255, 246, 234, 128],
+        "Name": "S"
+    }, {
+        "Accuracy": 0.99,
+        "Color": [255, 255, 255, 160],
+        "Name": "SS"
+    }, {
+        "Accuracy": 1,
+        "Color": [255, 255, 255, 255],
+        "Name": "X"
+    }],
+    "HitMechanics": {
+        "GhostTapJudgement": null,
+        "NotePriority": "OsuMania"
+    },
+    "HoldMechanics": {
+        "JudgeReleasesSeparately": [[[-12, 12], [-30, 30], [-52.5, 52.5], [-190.5, 190.5], null, null], 4]
+    },
+    "Judgements": [{
+        "BreaksCombo": false,
+        "Color": [255, 0, 255, 255],
+        "Name": "Marvelous",
+        "TimingWindows": [-8, 8]
+    }, {
+        "BreaksCombo": false,
+        "Color": [255, 255, 255, 0],
+        "Name": "Perfect",
+        "TimingWindows": [-20, 20]
+    }, {
+        "BreaksCombo": false,
+        "Color": [255, 0, 255, 100],
+        "Name": "Great",
+        "TimingWindows": [-35, 35]
+    }, {
+        "BreaksCombo": false,
+        "Color": [255, 0, 160, 255],
+        "Name": "Good",
+        "TimingWindows": [-49, 49]
+    }, {
+        "BreaksCombo": false,
+        "Color": [255, 160, 160, 160],
+        "Name": "Okay",
+        "TimingWindows": [-127, 127]
+    }, {
+        "BreaksCombo": true,
+        "Color": [255, 255, 80, 80],
+        "Name": "Miss",
+        "TimingWindows": [-164, 164]
+    }],
+    "Lamps": [{
+        "Color": [255, 255, 160, 160],
+        "Name": "SDCB",
+        "Requirement": {
+            "ComboBreaksAtMost": 9
+        }
+    }, {
+        "Color": [255, 160, 160, 160],
+        "Name": "1CB",
+        "Requirement": {
+            "ComboBreaksAtMost": 1
+        }
+    }, {
+        "Color": [255, 0, 255, 160],
+        "Name": "FC",
+        "Requirement": {
+            "ComboBreaksAtMost": 0
+        }
+    }, {
+        "Color": [255, 255, 255, 160],
+        "Name": "GFC",
+        "Requirement": {
+            "JudgementAtMost": [3, 0]
+        }
+    }, {
+        "Color": [255, 160, 255, 160],
+        "Name": "SDG",
+        "Requirement": {
+            "JudgementAtMost": [2, 9]
+        }
+    }, {
+        "Color": [255, 200, 160, 255],
+        "Name": "1G",
+        "Requirement": {
+            "JudgementAtMost": [2, 1]
+        }
+    }, {
+        "Color": [255, 255, 255, 160],
+        "Name": "PFC",
+        "Requirement": {
+            "JudgementAtMost": [2, 0]
+        }
+    }, {
+        "Color": [255, 160, 255, 255],
+        "Name": "MFC",
+        "Requirement": {
+            "JudgementAtMost": [1, 0]
+        }
+    }],
+    "Name": "Quaver Impossible"
+}

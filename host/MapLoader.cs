@@ -52,7 +52,7 @@ internal static class MapLoader
         osuText = ChartModTransformer.Apply(osuText, selection.Mods, selection.PlayMode, selection.RandomSeed,
             supportsHoldConversion: !extension.Equals(".osu", StringComparison.OrdinalIgnoreCase));
         var speedRate = double.IsFinite(selection.SpeedRate) && selection.SpeedRate > 0 ? selection.SpeedRate : 1d;
-        var metrics = await CalculateReferenceMetricsAsync(osuText, speedRate, settings);
+            var metrics = await CalculateReferenceMetricsAsync(osuText, speedRate);
         var identity = string.IsNullOrWhiteSpace(selection.Identity)
             ? $"{sourcePath}|{selection.Index}|{selection.Mods}|{speedRate:0.#####}"
             : selection.Identity!;
@@ -389,17 +389,16 @@ internal static class MapLoader
         return null;
     }
 
-    private static async Task<string> CalculateReferenceMetricsAsync(string osuText, double speedRate, OverlaySettings settings)
+    private static async Task<string> CalculateReferenceMetricsAsync(string osuText, double speedRate)
     {
         try
         {
             var script = Path.Combine(AppContext.BaseDirectory, "Data", "ReferenceMetrics.py");
-            var toolkitPath = Directory.Exists(Path.Combine(settings.ToolkitRoot, "nonebot_plugin_osumania_toolkit"))
-                ? Path.Combine(settings.ToolkitRoot, "nonebot_plugin_osumania_toolkit")
-                : settings.ToolkitRoot;
+            var toolkitPath = Path.Combine(AppContext.BaseDirectory, "nonebot_plugin_osumania_toolkit");
             if (!File.Exists(script) || !Directory.Exists(Path.Combine(toolkitPath, "algorithm")))
                 return "{\"sunnyRework\":null,\"sunnyEstDiff\":null,\"osuSr\":null}";
-            var startInfo = new ProcessStartInfo(settings.PythonExecutable)
+            var bundledPython = Path.Combine(AppContext.BaseDirectory, "runtime", "python", "python.exe");
+            var startInfo = new ProcessStartInfo(File.Exists(bundledPython) ? bundledPython : "python")
             {
                 UseShellExecute = false,
                 RedirectStandardInput = true,
@@ -413,12 +412,23 @@ internal static class MapLoader
             using var process = Process.Start(startInfo);
             if (process is null)
                 return "{}";
+            var outputTask = process.StandardOutput.ReadToEndAsync();
+            var errorTask = process.StandardError.ReadToEndAsync();
             await process.StandardInput.WriteAsync(osuText);
             process.StandardInput.Close();
-            var outputTask = process.StandardOutput.ReadToEndAsync();
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-            await process.WaitForExitAsync(timeout.Token);
+            try
+            {
+                await process.WaitForExitAsync(timeout.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                if (!process.HasExited)
+                    process.Kill(entireProcessTree: true);
+                return "{\"sunnyRework\":null,\"sunnyEstDiff\":null,\"osuSr\":null}";
+            }
             var output = (await outputTask).Trim();
+            _ = await errorTask;
             return process.ExitCode == 0 && output.StartsWith('{') ? output : "{\"sunnyRework\":null,\"sunnyEstDiff\":null,\"osuSr\":null}";
         }
         catch

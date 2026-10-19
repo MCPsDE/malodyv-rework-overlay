@@ -5,6 +5,9 @@
         Width="515" Height="610" MinWidth="320" MinHeight="300"
         WindowStyle="None" ResizeMode="NoResize"
         AllowsTransparency="True" Background="Transparent" ShowInTaskbar="False"
-        ShowActivated="False" Topmost="True" WindowStartupLocation="Manual">
-  <wv2:WebView2 x:Name="CardBrowser" DefaultBackgroundColor="Transparent" />
+        ShowActivated="False" Topmost="True" WindowStartupLocation="Manual"
+        PreviewMouseLeftButtonDown="OverlayWindow_PreviewMouseLeftButtonDown"
+        PreviewMouseMove="OverlayWindow_PreviewMouseMove"
+        PreviewMouseLeftButtonUp="OverlayWindow_PreviewMouseLeftButtonUp">
+  <wv2:WebView2CompositionControl x:Name="CardBrowser" DefaultBackgroundColor="Transparent" />
 </Window>

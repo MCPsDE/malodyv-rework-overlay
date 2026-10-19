@@ -18,7 +18,7 @@ public sealed class Plugin : BasePlugin
 {
     public const string PluginGuid = "com.baka666.malodyv.reworkoverlay";
     public const string PluginName = "MalodyV Rework Overlay";
-    public const string PluginVersion = "1.3.0";
+    public const string PluginVersion = "1.3.1";
     internal const string UpdateManifestUrl =
         "https://raw.githubusercontent.com/MCPsDE/malodyv-rework-overlay/main/manifest.json";
     private const string RuntimeChartTypeName = "Malody.Chart.iqy";
@@ -29,7 +29,6 @@ public sealed class Plugin : BasePlugin
     {
         try
         {
-            MainThreadDispatcher.Initialize();
             StartCompanion();
         }
         catch (Exception exception)
@@ -44,28 +43,14 @@ public sealed class Plugin : BasePlugin
         TryPatch(() => FindMethod("Malody.Scene.Item.ItemChart", "SetSelected"), nameof(SelectionPatch.ChartItemChanged), "hall chart focus");
         TryPatch(() => FindMethod("Malody.Scene.Panel.PanelMod", "OnDisable"), nameof(SelectionPatch.ModSettingsChanged), "hall and room mod selection");
         TryPatch(() => FindMethod("Malody.Scene.Panel.PanelJudge", "OnDisable"), nameof(SelectionPatch.ModSettingsChanged), "Turbo settings");
-        TryPatch(() => FindMethod("Malody.Scene.SceneRoom", "HandleConfigChange"), nameof(SelectionPatch.ModSettingsChanged), "online room mod sync");
+        TryPatch(FindRoomConfigChangeMethod, nameof(SelectionPatch.ModSettingsChanged), "online room config sync");
         TryPatch(FindRoomChartPublisher, nameof(SelectionPatch.RoomChartResolved), "online room chart resolution");
         TryPatch(() => FindMethod("Malody.Scene.SceneChart", "OnClose"), nameof(SelectionPatch.SelectionCleared), "chart scene exit");
         TryPatch(() => FindMethod("Malody.Scene.SceneRoom", "OnBack"), nameof(SelectionPatch.SelectionCleared), "online room exit");
         TryPatch(() => FindMethod("Malody.Scene.SceneRoomWatch", "OnBack"), nameof(SelectionPatch.SelectionCleared), "room watch exit");
         TryPatch(() => FindMethod("Malody.Play.ChartPlayer", "Play"), nameof(SelectionPatch.GameplayStarted), "gameplay start");
         TryPatch(() => FindMethod("Malody.Scene.SceneResult", "OnEnable"), nameof(SelectionPatch.ResultShown), "result screen");
-        try
-        {
-            var playInfo = FindPlayInfoMembers();
-            Log.LogInfo($"Resolved current chart owner {playInfo.ChartProperty.DeclaringType?.FullName}.{playInfo.ChartProperty.Name}.");
-            TryPatch(() => playInfo.ChartProperty.GetSetMethod(true)
-                ?? throw new MissingMethodException(playInfo.ChartProperty.DeclaringType?.FullName, "set_Chart"),
-                nameof(SelectionPatch.CurrentChartChanged), "current chart state change");
-            TryPatch(() => playInfo.ChartProperty.GetGetMethod(true)
-                ?? throw new MissingMethodException(playInfo.ChartProperty.DeclaringType?.FullName, "get_Chart"),
-                nameof(SelectionPatch.CurrentChartRead), "current chart state read");
-        }
-        catch (Exception exception)
-        {
-            Log.LogError($"Failed to locate the current chart state: {exception.Message}");
-        }
+        TryPatch(() => FindMethod("Malody.Scene.SceneLoader", "ToScene"), nameof(SelectionPatch.SceneChanged), "scene state changes");
         SelectionPipe.PublishCurrentChart();
     }
 
@@ -127,6 +112,20 @@ public sealed class Plugin : BasePlugin
         throw new MissingMethodException("Could not find the room chart resolver on PanelRoomSong.");
     }
 
+    private static MethodInfo FindRoomConfigChangeMethod()
+    {
+        var sceneRoomType = FindType("Assembly-CSharp", "Malody.Scene.SceneRoom");
+        var method = sceneRoomType.GetMethods(BindingFlags.Public | BindingFlags.NonPublic |
+            BindingFlags.Instance | BindingFlags.DeclaredOnly)
+            .FirstOrDefault(candidate =>
+            {
+                var parameters = candidate.GetParameters();
+                return parameters.Length == 1 &&
+                    parameters[0].ParameterType.FullName?.Contains("RoomChangeConfig", StringComparison.Ordinal) == true;
+            });
+        return method ?? throw new MissingMethodException("Could not find the obfuscated SceneRoom config-change handler.");
+    }
+
     private static PropertyInfo FindChartProperty(Type itemType)
     {
         return itemType.GetProperties(BindingFlags.Public | BindingFlags.Instance)
@@ -139,35 +138,6 @@ public sealed class Plugin : BasePlugin
         var type = FindType("Assembly-CSharp", typeName);
         return AccessTools.Method(type, methodName)
             ?? throw new MissingMethodException(typeName, methodName);
-    }
-
-    private sealed record PlayInfoMembers(Type Type, PropertyInfo[] Instances, PropertyInfo ChartProperty);
-
-    private static PlayInfoMembers FindPlayInfoMembers()
-    {
-        var candidates = new List<PlayInfoMembers>();
-        foreach (var type in AppDomain.CurrentDomain.GetAssemblies().SelectMany(GetLoadableTypes))
-        {
-            try
-            {
-                var properties = type.GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static);
-                var selfProperties = properties.Where(property => property.GetMethod?.IsStatic == true && property.PropertyType == type).ToArray();
-                if (selfProperties.Length < 2)
-                    continue;
-
-                var chartProperty = properties.FirstOrDefault(property =>
-                    property.GetMethod?.IsStatic != true &&
-                    string.Equals(property.PropertyType.FullName, RuntimeChartTypeName, StringComparison.Ordinal));
-                if (chartProperty is not null)
-                    candidates.Add(new PlayInfoMembers(type, selfProperties, chartProperty));
-            }
-            catch
-            {
-            }
-        }
-
-        return candidates.OrderByDescending(candidate => candidate.Instances.Length).FirstOrDefault()
-            ?? throw new TypeLoadException("Could not identify the obfuscated PlayInfo type by its chart and singleton properties.");
     }
 
     private static Type FindType(string assemblyName, string typeName)
@@ -209,6 +179,7 @@ public sealed class Plugin : BasePlugin
             if (existing.MainWindowHandle != IntPtr.Zero)
             {
                 Log.LogInfo($"Reusing card host process {existing.Id}.");
+                existing.Dispose();
                 return;
             }
 
@@ -216,15 +187,36 @@ public sealed class Plugin : BasePlugin
             try
             {
                 existing.Kill(entireProcessTree: true);
-                existing.WaitForExit(3000);
+                _ = RestartCompanionAfterExitAsync(existing);
+                return;
             }
             catch (Exception exception)
             {
+                existing.Dispose();
                 throw new InvalidOperationException(
                     $"The existing card host process {existing.Id} could not be replaced.", exception);
             }
         }
 
+        LaunchCompanion();
+    }
+
+    private async Task RestartCompanionAfterExitAsync(Process existing)
+    {
+        try
+        {
+            await existing.WaitForExitAsync().ConfigureAwait(false);
+            existing.Dispose();
+            LaunchCompanion();
+        }
+        catch (Exception exception)
+        {
+            Log.LogError($"Failed to restart the stale card host: {exception}");
+        }
+    }
+
+    private void LaunchCompanion()
+    {
         var started = Process.Start(new ProcessStartInfo(HostPath)
         {
             WorkingDirectory = Path.GetDirectoryName(HostPath)!,
@@ -234,21 +226,7 @@ public sealed class Plugin : BasePlugin
             throw new InvalidOperationException("The card host process could not be started.");
 
         Log.LogInfo($"Started card host process {started.Id}.");
-        for (var attempt = 0; attempt < 20; attempt++)
-        {
-            Thread.Sleep(100);
-            started.Refresh();
-            if (started.HasExited)
-                throw new InvalidOperationException(
-                    $"The card host exited during startup with code {started.ExitCode}.");
-            if (started.MainWindowHandle != IntPtr.Zero)
-            {
-                Log.LogInfo($"Card host window is ready in process {started.Id}.");
-                return;
-            }
-        }
-
-        Log.LogWarning($"Card host process {started.Id} is running but has not exposed a main window yet.");
+        started.Dispose();
     }
 }
 
@@ -280,6 +258,8 @@ internal static class SelectionPipe
     private static readonly Channel<SelectionMessage> Updates = Channel.CreateBounded<SelectionMessage>(
         new BoundedChannelOptions(4) { FullMode = BoundedChannelFullMode.DropOldest, SingleReader = true, SingleWriter = false });
     private static string? _lastIdentity;
+    private static object? _lastChart;
+    private static bool? _lastGameState;
     private static BepInEx.Logging.ManualLogSource? _log;
     private static readonly HttpClient UpdateHttp = new() { Timeout = TimeSpan.FromSeconds(5) };
 
@@ -345,44 +325,37 @@ internal static class SelectionPipe
     private static PropertyInfo[] _playInfoInstances = Array.Empty<PropertyInfo>();
     private static Type? _runtimeChartType;
     private static ConstructorInfo? _runtimeChartConstructor;
-    private static long _lastPollAt;
+    private static PropertyInfo? _modProperty;
+    private static PropertyInfo? _modForPlayProperty;
+    private static PropertyInfo? _playModeProperty;
+    private static PropertyInfo? _customJudgeProperty;
+    private static PropertyInfo? _randomSeedBackingProperty;
+    private static PropertyInfo? _customJudgeSpeedProperty;
+    private static MethodInfo? _canPlayModMethod;
+    private static bool _canPlayModResolved;
 
     public static void PublishCurrentChart()
     {
         try
         {
             ResolvePlayInfoProperties();
-            foreach (var instanceProperty in _playInfoInstances)
+            object? chart = null;
+            try
             {
-                var instance = instanceProperty.GetValue(null);
-                var chart = instance is null ? null : _chartProperty!.GetValue(instance);
-                if (chart is not null)
-                {
-                    Diagnostic($"Initial current chart read from {instanceProperty.Name}: {chart.GetType().FullName}.");
-                    PublishChart(chart);
-                }
+                var instance = _localPlayInfoProperty?.GetValue(null);
+                chart = instance is null ? null : _chartProperty!.GetValue(instance);
             }
+            catch (Exception exception)
+            {
+                DiagnosticWarning($"Current PlayInfo read failed; using the last selected chart: {exception.Message}");
+            }
+
+            PublishChart(chart ?? _lastChart);
         }
         catch (Exception exception)
         {
             DiagnosticWarning($"Initial current chart read failed: {exception}");
         }
-    }
-
-    public static void PublishCurrentChart(object? chart) => PublishChart(chart);
-
-    public static void PublishCurrentChartIfChanged(object? chart)
-    {
-        var now = Environment.TickCount64;
-        if (now - Interlocked.Read(ref _lastPollAt) < 500)
-            return;
-        Interlocked.Exchange(ref _lastPollAt, now);
-        PublishChart(chart);
-    }
-
-    public static void PublishCurrentChartDelayed()
-    {
-        MainThreadDispatcher.PostDelayed(PublishCurrentChart);
     }
 
     private static void ResolvePlayInfoProperties()
@@ -395,11 +368,11 @@ internal static class SelectionPipe
         {
             try
             {
-                var properties = type.GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static);
-                var selfProperties = properties.Where(property => property.GetMethod?.IsStatic == true && property.PropertyType == type).ToArray();
+                var typeProperties = type.GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static);
+                var selfProperties = typeProperties.Where(property => property.GetMethod?.IsStatic == true && property.PropertyType == type).ToArray();
                 if (selfProperties.Length < 2)
                     continue;
-                var chartProperty = properties.FirstOrDefault(property =>
+                var chartProperty = typeProperties.FirstOrDefault(property =>
                     property.GetMethod?.IsStatic != true &&
                     string.Equals(property.PropertyType.FullName, RuntimeChartTypeName, StringComparison.Ordinal));
                 if (chartProperty is not null)
@@ -414,13 +387,58 @@ internal static class SelectionPipe
         if (match.Type is null)
             throw new MissingMemberException("Could not identify the obfuscated PlayInfo chart state.");
         _playInfoInstances = match.Instances;
-        _localPlayInfoProperty = match.Instances.FirstOrDefault(property =>
-            string.Equals(property.Name, "Local", StringComparison.OrdinalIgnoreCase)) ?? match.Instances[0];
+        _localPlayInfoProperty = match.Instances.FirstOrDefault(property => property.SetMethod is null)
+            ?? match.Instances.FirstOrDefault(property =>
+                string.Equals(property.Name, "Local", StringComparison.OrdinalIgnoreCase))
+            ?? match.Instances[0];
         _chartProperty = match.Chart;
         _runtimeChartType = match.Chart.PropertyType;
         _runtimeChartConstructor = _runtimeChartType.GetConstructor(
             BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance,
             binder: null, new[] { typeof(IntPtr) }, modifiers: null);
+
+        var properties = match.Type.GetProperties(BindingFlags.Public | BindingFlags.NonPublic |
+            BindingFlags.Instance | BindingFlags.Static);
+        var modMaskProperties = properties.Where(property =>
+            string.Equals(property.PropertyType.FullName, "Malody.Play.ModMask", StringComparison.Ordinal)).ToArray();
+        _modProperty = modMaskProperties.FirstOrDefault(property =>
+            property.SetMethod is not null &&
+            !properties.Any(candidate => candidate.Name.Equals($"_{property.Name}_k__BackingField",
+                StringComparison.Ordinal))) ?? modMaskProperties.FirstOrDefault();
+        _modForPlayProperty = modMaskProperties.FirstOrDefault(property =>
+            property != _modProperty && properties.Any(candidate => candidate.Name.Equals(
+                $"_{property.Name}_k__BackingField", StringComparison.Ordinal)));
+        _playModeProperty = properties.FirstOrDefault(property =>
+            string.Equals(property.PropertyType.FullName, "Malody.Play.PlayModeType", StringComparison.Ordinal));
+        _customJudgeProperty = properties.FirstOrDefault(property => IsCustomJudgeType(property.PropertyType));
+        _randomSeedBackingProperty = properties.FirstOrDefault(property =>
+            property.PropertyType == typeof(int) && property.Name.Contains("BackingField", StringComparison.Ordinal));
+        if (_customJudgeProperty is not null)
+        {
+            _customJudgeSpeedProperty = _customJudgeProperty.PropertyType
+                .GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)
+                .Where(property => property.PropertyType == typeof(float))
+                .OrderBy(property => property.MetadataToken)
+                .FirstOrDefault();
+        }
+
+        Diagnostic($"Resolved PlayInfo state members: Mod={_modProperty?.Name ?? "<missing>"}, " +
+            $"ModForPlay={_modForPlayProperty?.Name ?? "<missing>"}, PlayMode={_playModeProperty?.Name ?? "<missing>"}, " +
+            $"Turbo={_customJudgeProperty?.Name ?? "<missing>"}, Seed={_randomSeedBackingProperty?.Name ?? "<missing>"}.");
+    }
+
+    private static bool IsCustomJudgeType(Type type)
+    {
+        try
+        {
+            var properties = type.GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+            return properties.Count(property => property.PropertyType == typeof(float)) >= 2 &&
+                properties.Count(property => property.PropertyType == typeof(bool)) >= 4;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     private static IEnumerable<Type> GetLoadableTypes(Assembly assembly)
@@ -481,6 +499,7 @@ internal static class SelectionPipe
                     $"properties=[{properties}]; metadata=[{metadataProperties}]).");
             }
             var index = Convert.ToUInt32(rawIndex);
+            _lastChart = chart;
             var (mods, speedRate, playMode, randomSeed) = ReadActiveModState();
             var identity = $"{Path.GetFullPath(path)}|{index}|{version}|{mods}|{speedRate.ToString("0.#####", System.Globalization.CultureInfo.InvariantCulture)}|{playMode}|{randomSeed}";
             if (string.Equals(Interlocked.Exchange(ref _lastIdentity, identity), identity, StringComparison.OrdinalIgnoreCase))
@@ -506,19 +525,23 @@ internal static class SelectionPipe
                 return (0, 1, -1, 0);
 
             var localType = local.GetType();
-            var rawMods = ReadMember(localType, local, "Mod");
+            var rawMods = _modProperty?.GetValue(local) ?? ReadMember(localType, local, "Mod");
             var mods = rawMods is null ? 0u : Convert.ToUInt32(rawMods);
-            var customJudge = ReadMember(localType, local, "customJudge");
-            var speed = customJudge is null ? 1d : ReadDouble(ReadMember(customJudge.GetType(), customJudge, "audioSpeed"), 1d);
-            if (customJudge is null || (mods & 0x8000u) != 0)
+            var mode = _playModeProperty?.GetValue(local) ?? ReadMember(localType, local, "playMode");
+            mods = FilterPlayableMods(mods, rawMods?.GetType(), mode);
+            var customJudge = _customJudgeProperty?.GetValue(local) ?? ReadMember(localType, local, "customJudge");
+            var speed = customJudge is null ? 1d : ReadDouble(
+                _customJudgeSpeedProperty?.GetValue(customJudge) ?? ReadMember(customJudge.GetType(), customJudge, "audioSpeed"), 1d);
+            var holdsEnabled = (mods & (1u << 15)) != 0;
+            if (customJudge is null || holdsEnabled)
             {
                 if ((mods & 0x20u) != 0) speed = 1.5;
                 else if ((mods & 0x10u) != 0) speed = 1.2;
                 else if ((mods & 0x100u) != 0) speed = 0.8;
+                else if (customJudge is null) speed = 1d;
             }
 
-            var mode = ReadMember(localType, local, "playMode");
-            var randomSeed = ReadMember(localType, local, "RandomSeed");
+            var randomSeed = _randomSeedBackingProperty?.GetValue(local) ?? ReadMember(localType, local, "RandomSeed");
             return (mods, double.IsFinite(speed) && speed > 0 ? speed : 1d,
                 mode is null ? -1 : Convert.ToInt32(mode), randomSeed is null ? 0 : Convert.ToInt32(randomSeed));
         }
@@ -526,6 +549,46 @@ internal static class SelectionPipe
         {
             _log?.LogWarning($"Unable to read active MalodyV mods: {exception.Message}");
             return (0, 1, -1, 0);
+        }
+    }
+
+    private static uint FilterPlayableMods(uint mods, Type? modType, object? playMode)
+    {
+        if (mods == 0 || modType?.IsEnum != true || playMode is null || !playMode.GetType().IsEnum)
+            return mods;
+
+        try
+        {
+            if (!_canPlayModResolved)
+            {
+                var playUtil = AppDomain.CurrentDomain.GetAssemblies()
+                    .Select(assembly => assembly.GetType("Malody.Play.PlayUtil", throwOnError: false))
+                    .FirstOrDefault(type => type is not null);
+                _canPlayModMethod = playUtil?.GetMethod("CanPlayMod",
+                    BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static,
+                    binder: null, new[] { modType, playMode.GetType() }, modifiers: null);
+                _canPlayModResolved = true;
+            }
+            var canPlayMod = _canPlayModMethod;
+            if (canPlayMod is null || canPlayMod.ReturnType != typeof(bool))
+                return mods;
+
+            uint playableMods = 0;
+            for (var bit = 0; bit < 16; bit++)
+            {
+                var flag = 1u << bit;
+                if ((mods & flag) == 0)
+                    continue;
+                var result = canPlayMod.Invoke(null, new[] { Enum.ToObject(modType, flag), playMode });
+                if (result is true)
+                    playableMods |= flag;
+            }
+            return playableMods;
+        }
+        catch (Exception exception)
+        {
+            DiagnosticWarning($"Unable to filter mods for the selected mode: {exception.Message}");
+            return mods;
         }
     }
 
@@ -567,12 +630,18 @@ internal static class SelectionPipe
 
     public static void Clear()
     {
+        _lastChart = null;
         if (Interlocked.Exchange(ref _lastIdentity, null) is not null)
             Updates.Writer.TryWrite(new SelectionMessage("selection", null, 0, null, null));
     }
 
-    public static void PublishGameState(bool isPlaying) =>
+    public static void PublishGameState(bool isPlaying)
+    {
+        if (_lastGameState == isPlaying)
+            return;
+        _lastGameState = isPlaying;
         Updates.Writer.TryWrite(new SelectionMessage(isPlaying ? "gameplay" : "result", null, 0, null, null));
+    }
 
     private static async Task WriteLoopAsync()
     {
@@ -625,7 +694,7 @@ internal static class SelectionPatch
         if (__args.Length >= 2 && string.Equals(__args[0]?.ToString(), "ChangeChart", StringComparison.Ordinal))
             SelectionPipe.PublishChart(__args[1]);
         else if (__args.Length > 0 && string.Equals(__args[0]?.ToString(), "ChangeMod", StringComparison.Ordinal))
-            SelectionPipe.PublishCurrentChartDelayed();
+            SelectionPipe.PublishCurrentChart();
     }
 
     public static void ChartItemChanged(object __instance)
@@ -668,14 +737,18 @@ internal static class SelectionPatch
 
     public static void ResultShown() => SelectionPipe.PublishGameState(false);
 
-    public static void ModSettingsChanged() => SelectionPipe.PublishCurrentChartDelayed();
-
-    public static void CurrentChartChanged(object[] __args)
+    public static void SceneChanged(object[] __args)
     {
-        if (__args.Length > 0)
-            SelectionPipe.PublishCurrentChart(__args[0]);
+        if (__args.Length == 0 || __args[0] is null)
+            return;
+
+        var scene = __args[0].ToString();
+        if (string.Equals(scene, "Play", StringComparison.OrdinalIgnoreCase))
+            SelectionPipe.PublishGameState(true);
+        else if (string.Equals(scene, "Result", StringComparison.OrdinalIgnoreCase))
+            SelectionPipe.PublishGameState(false);
     }
 
-    public static void CurrentChartRead(object? __result) =>
-        SelectionPipe.PublishCurrentChartIfChanged(__result);
+    public static void ModSettingsChanged() => SelectionPipe.PublishCurrentChart();
+
 }

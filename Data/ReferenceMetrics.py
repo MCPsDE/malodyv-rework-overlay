@@ -4,6 +4,19 @@ import sys
 import tempfile
 import types
 
+class _NullLogger:
+    def __getattr__(self, name):
+        return lambda *args, **kwargs: None
+
+
+nonebot_package = types.ModuleType("nonebot")
+nonebot_package.__path__ = []
+nonebot_package.logger = _NullLogger()
+nonebot_log = types.ModuleType("nonebot.log")
+nonebot_log.logger = nonebot_package.logger
+sys.modules.setdefault("nonebot", nonebot_package)
+sys.modules.setdefault("nonebot.log", nonebot_log)
+
 toolkit = pathlib.Path(sys.argv[1]).resolve()
 speed_rate = float(sys.argv[2]) if len(sys.argv) > 2 else 1.0
 if toolkit.name != "nonebot_plugin_osumania_toolkit":

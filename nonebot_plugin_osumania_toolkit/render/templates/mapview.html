@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <title>MapAnalysis</title>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --text-primary: #f5f7ff;
+            /*--text-soft: #a9b1d2;*/
+            --text-soft: #a9b1d2;
+            --glass: #151b2f;
+            --glass-border: #2a3456;
+            --overlay: #111828;
+            --track: #2a3557;
+        }
+
+        html,
+        body {
+            width: 100%;
+            height: 100%;
+            color: var(--text-primary);
+            font-family: "Outfit", "Segoe UI", sans-serif;
+            background: #0f1424;
+        }
+
+        body {
+            padding: 0;
+        }
+
+        .dashboard {
+            width: fit-content;
+            min-width: 475px;
+            /* 删除原来的 width/min-width/max-width 三行固定 475 */
+            margin: 0;
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 0;
+        }
+
+        .card {
+            position: relative;
+            border-radius: 16px;
+            border: 1px solid var(--glass-border);
+            background: var(--glass);
+            box-shadow: 0 16px 40px rgba(0, 0, 0, 0.24);
+            backdrop-filter: none;
+            padding: 12px;
+            overflow: hidden;
+        }
+
+        .status-row {
+            position: relative;
+            z-index: 1;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            margin-bottom: 8px;
+            min-width: 0;
+        }
+
+        .status {
+            display: block;
+            font-size: 15px;
+            color: var(--text-soft);
+            width: 0;
+            flex: 1 1 0;
+            min-width: 0;
+            max-width: 100%;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .mode-tag {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            height: 22px;
+            padding: 0 10px;
+            border-radius: 999px;
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            border: 1px solid rgba(255, 255, 255, 0.28);
+            color: #f5f7ff;
+            background: rgba(255, 255, 255, 0.12);
+            flex: 0 0 auto;
+            margin-left: auto;
+        }
+
+        .mode-tag.mode-rc {
+            background: rgba(94, 170, 255, 0.24);
+            border-color: rgba(94, 170, 255, 0.5);
+            color: #d8ecff;
+        }
+
+        .mode-tag.mode-ln {
+            background: rgba(86, 214, 179, 0.22);
+            border-color: rgba(86, 214, 179, 0.5);
+            color: #dcfff5;
+        }
+
+        .mode-tag.mode-hb {
+            background: rgba(255, 190, 110, 0.24);
+            border-color: rgba(255, 190, 110, 0.5);
+            color: #fff1d7;
+        }
+
+        .mode-tag.mode-mix {
+            background: rgba(190, 163, 255, 0.24);
+            border-color: rgba(190, 163, 255, 0.5);
+            color: #f0e8ff;
+        }
+
+        .main-card {
+            width: fit-content;
+            min-width: 475px;
+            /* 删除原来的 width/min-width/max-width 三行固定 475 */
+            display: grid;
+            grid-template-rows: auto auto minmax(0, 1fr) auto;
+            gap: 8px;
+            height: 490px;           /* 高度可保持不变 */
+            overflow: hidden;
+        }
+
+        /* ---------- 背景层 ---------- */
+        .bg-blur {
+            position: absolute;
+            inset: 0;
+            z-index: 0;
+            overflow: hidden;
+        }
+        .bg-img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            filter: blur(12px);
+            opacity: 0.6;
+        }
+        .bg-dim {
+            position: absolute;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.1);   /* 模拟 brightness(0.5) */
+            pointer-events: none;
+        }
+        /* --------------------------- */
+
+        .star-value {
+            position: relative;
+            z-index: 1;
+            font-family: "Space Grotesk", "Segoe UI", sans-serif;
+            font-size: 48px;
+            font-weight: 800;
+            line-height: 1;
+            color: var(--star-text-color, #f6fbff);
+            background: var(--star-bg-color, #263254);
+            border: 1px solid #3a466f;
+            border-radius: 20px;
+            display: inline-block;
+            padding: 4px 10px;
+            text-shadow: none;
+        }
+
+        .star-block {
+            position: relative;
+            z-index: 1;
+            display: flex;
+            align-items: flex-end;
+            justify-content: space-between;
+            gap: 12px;
+            min-width: 0;
+        }
+
+        .star-left {
+            min-width: 0;
+            flex: 1 1 52%;
+            display: grid;
+            gap: 4px;
+        }
+
+        .star-right {
+            text-align: right;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            align-items: flex-end;
+            justify-content: flex-end;
+            min-width: 0;
+            max-width: 48%;
+            flex: 1 1 48%;
+        }
+
+        .star-subtitle {
+            display: block;
+            min-width: 0;
+            font-size: 26px;
+            font-weight: 700;
+            line-height: 1.08;
+            color: #e9efff;
+            width: 100%;
+            max-width: 100%;
+            text-align: right;
+            overflow: visible;
+            text-overflow: clip;
+            white-space: normal;
+            overflow-wrap: anywhere;
+        }
+
+        .star-subtitle.two-line {
+            display: grid;
+            gap: 2px;
+            align-content: end;
+            white-space: normal;
+        }
+
+        .star-subtitle .diff-line {
+            display: block;
+            min-width: 0;
+            width: 100%;
+            overflow: visible;
+            text-overflow: clip;
+            white-space: normal;
+            overflow-wrap: anywhere;
+            text-align: right;
+        }
+
+        .star-caption {
+            font-size: 12px;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: #bfc8e7;
+            opacity: 0.9;
+        }
+
+        .star-meta {
+            position: relative;
+            z-index: 1;
+            display: grid;
+            gap: 1px;
+            font-size: 13px;
+            color: #d4dbf8;
+            line-height: 1.28;
+            opacity: 0.95;
+        }
+
+        .star-meta-line {
+            display: block;
+            max-width: 100%;
+            overflow: visible;
+            text-overflow: clip;
+            white-space: normal;
+            overflow-wrap: anywhere;
+        }
+
+        .cluster-bars {
+            position: relative;
+            z-index: 1;
+            list-style: none;
+            display: grid;
+            gap: 6px;
+            align-content: start;
+            width: 100%;
+            height: 100%;
+            overflow-x: hidden;
+            overflow-y: auto;
+            min-height: 0;
+            padding-right: 4px;
+            padding-bottom: 24px;
+        }
+
+        .cluster-item {
+            display: grid;
+            gap: 4px;
+        }
+
+        .cluster-label {
+            font-family: "Space Grotesk", "Segoe UI", sans-serif;
+            font-weight: 600;
+            font-size: 15px;
+            letter-spacing: 0.01em;
+        }
+
+        .cluster-track {
+            width: 100%;
+            height: 10px;
+            border-radius: 999px;
+            background: var(--track);
+            overflow: hidden;
+        }
+
+        .cluster-fill {
+            width: var(--bar-width, 0%);
+            height: 100%;
+            border-radius: 0 999px 999px 0;
+            background: linear-gradient(90deg, #4ec7ff 0%, #58f0d9 60%, #f6ef6b 100%);
+        }
+
+        .cluster-subtype {
+            font-size: 13px;
+            line-height: 1.4;
+            color: var(--text-soft);
+        }
+
+        .cluster-item.empty {
+            font-size: 15px;
+            color: var(--text-soft);
+        }
+
+        .footer-note {
+            position: absolute;
+            left: 12px;
+            right: 12px;
+            bottom: 10px;
+            z-index: 2;
+            font-size: 12px;
+            color: #bfc8e7;
+            opacity: 0.9;
+            line-height: 1.2;
+            margin-top: 0;
+            pointer-events: none;
+        }
+
+        .card-overlay {
+            position: absolute;
+            inset: 0;
+            z-index: 3;
+            border-radius: inherit;
+            background: var(--overlay);
+            border: 1px solid #3a476e;
+            display: grid;
+            place-content: center;
+            justify-items: center;
+            text-align: center;
+            padding: 18px;
+        }
+
+        .card-overlay[hidden] {
+            display: none !important;
+        }
+
+        .overlay-spinner {
+            width: 34px;
+            height: 34px;
+            border-radius: 999px;
+            border: 3px solid #4f5f8f;
+            border-top-color: #8de6ff;
+            margin-bottom: 10px;
+        }
+
+        .overlay-title {
+            font-size: 17px;
+            font-weight: 700;
+            margin-bottom: 4px;
+        }
+
+        .overlay-message {
+            font-family: "Outfit", "Segoe UI", sans-serif;
+            font-size: 15px;
+            color: #f5d7d7;
+            max-width: 92%;
+            white-space: pre-wrap;
+            line-height: 1.4;
+        }
+
+        .star-badges {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+    </style>
+</head>
+
+<body>
+    <main class="dashboard">
+        <section class="card main-card">
+            <!-- 模糊背景层 -->
+            <div class="bg-blur">
+                {% if background_image %}
+                <img src="{{ background_image }}" class="bg-img" alt="">
+                <div class="bg-dim"></div>
+                {% endif %}
+            </div>
+
+            <div class="status-row">
+                <p id="status" class="status">{{ status_text }}</p>
+                <span class="mode-tag {{ mode_tag_class | default('mode-mix') }}">{{ mode_tag | default('Mix') }}</span>
+            </div>
+
+            <div class="star-block" id="rework">
+                <div class="star-left">
+                    <div class="star-badges">
+                        <div class="star-value" id="rework-star" style="--star-bg-color: {{ star_bg_color }}; --star-text-color: {{ star_text_color }};">{{ rework_star }}</div>
+                        <div class="star-value" id="official-star" style="--star-bg-color: {{ official_star_bg_color }}; --star-text-color: {{ official_star_text_color }};">{{ official_star }}</div>
+                    </div>
+                    <div class="star-meta" id="rework-meta">
+                        {% for line in rework_meta_lines %}
+                        <span class="star-meta-line">{{ line }}</span>
+                        {% endfor %}
+                    </div>
+                </div>
+                <div class="star-right">
+                    {% if rework_diff_bottom %}
+                    <div class="star-subtitle two-line" id="rework-diff">
+                        <span class="diff-line">{{ rework_diff_top }}</span>
+                        <span class="diff-line">{{ rework_diff_bottom }}</span>
+                    </div>
+                    {% else %}
+                    <div class="star-subtitle" id="rework-diff">{{ rework_diff_top }}</div>
+                    {% endif %}
+                    <div class="star-caption">Estimate Difficulty</div>
+                </div>
+            </div>
+
+            <ol id="pattern-clusters" class="cluster-bars">
+                {% if clusters %}
+                {% for item in clusters %}
+                <li class="cluster-item">
+                    <div class="cluster-label">{{ item.label }}</div>
+                    <div class="cluster-track">
+                        <div class="cluster-fill" style="--bar-width: {{ item.width }};"></div>
+                    </div>
+                    <div class="cluster-subtype">{{ item.subtype }}</div>
+                </li>
+                {% endfor %}
+                {% else %}
+                <li class="cluster-item empty">No data</li>
+                {% endif %}
+            </ol>
+
+            <div class="footer-note">Generated by Baka666Bot @猫猫虫小窝</div>
+
+            <div id="card-overlay" class="card-overlay" hidden>
+                <div id="overlay-spinner" class="overlay-spinner" aria-hidden="true"></div>
+                <p id="overlay-title" class="overlay-title">Loading</p>
+                <pre id="overlay-message" class="overlay-message"></pre>
+            </div>
+        </section>
+    </main>
+</body>
+
+</html>

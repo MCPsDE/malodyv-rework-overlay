@@ -1,0 +1,141 @@
+{
+    "Template": {
+        "Type": "formula",
+        "Name": "osu",
+        "Summary": "osu!mania ScoreV1",
+        "ArgumentName": "diff",
+        "Aliases": ["od"],
+        "Default": 8.0,
+        "Min": -15.0,
+        "Max": 15.0,
+        "Precision": 1,
+        "Variables": {
+            "w300": "max(1.0, 64.5 - 3 * diff)",
+            "w200": "max(1.0, 97.5 - 3 * diff)",
+            "w100": "max(1.0, 127.5 - 3 * diff)",
+            "w50": "max(1.0, 151.5 - 3 * diff)",
+            "w0": "max(1.0, 188.5 - 3 * diff)",
+            "w100_late": "max(1.0, w100 - 1.0)",
+            "w50_late": "max(1.0, w50 - 25.0)",
+            "w0_late": "max(1.0, w0 - 62.0)",
+            "overhold200": 16.5,
+            "overhold100": "max(1.0, 79.5 + (8.0 - diff) * 3.0)"
+        }
+    },
+    "Ruleset": {
+        "Name": "osu! OD{{diff}}",
+        "Description": "Simulates osu!mania scoring with OD={{diff}}",
+        "Judgements": [
+            {
+                "Name": "300g",
+                "Color": [255, 0, 255, 255],
+                "BreaksCombo": false,
+                "TimingWindows": [-16.5, 16.5]
+            },
+            {
+                "Name": "300",
+                "Color": [255, 255, 255, 0],
+                "BreaksCombo": false,
+                "TimingWindows": ["{{-w300}}", "{{w300}}"]
+            },
+            {
+                "Name": "200",
+                "Color": [255, 0, 255, 100],
+                "BreaksCombo": false,
+                "TimingWindows": ["{{-w200}}", "{{w200}}"]
+            },
+            {
+                "Name": "100",
+                "Color": [255, 0, 160, 255],
+                "BreaksCombo": false,
+                "TimingWindows": ["{{-w100}}", "{{w100_late}}"]
+            },
+            {
+                "Name": "50",
+                "Color": [255, 160, 160, 160],
+                "BreaksCombo": false,
+                "TimingWindows": ["{{-w50}}", "{{w50_late}}"]
+            },
+            {
+                "Name": "MISS",
+                "Color": [255, 255, 80, 80],
+                "BreaksCombo": true,
+                "TimingWindows": ["{{-w0}}", "{{w0_late}}"]
+            }
+        ],
+        "Lamps": [
+            {
+                "Name": "SDCB",
+                "Color": [255, 255, 160, 160],
+                "Requirement": { "ComboBreaksAtMost": 9 }
+            },
+            {
+                "Name": "1CB",
+                "Color": [255, 160, 160, 160],
+                "Requirement": { "ComboBreaksAtMost": 1 }
+            },
+            {
+                "Name": "FC",
+                "Color": [255, 0, 255, 160],
+                "Requirement": { "ComboBreaksAtMost": 0 }
+            },
+            {
+                "Name": "PERF",
+                "Color": [255, 255, 255, 160],
+                "Requirement": { "JudgementAtMost": [3, 0] }
+            },
+            {
+                "Name": "SDG",
+                "Color": [255, 160, 255, 160],
+                "Requirement": { "JudgementAtMost": [2, 9] }
+            },
+            {
+                "Name": "1G",
+                "Color": [255, 200, 160, 255],
+                "Requirement": { "JudgementAtMost": [2, 1] }
+            },
+            {
+                "Name": "SS",
+                "Color": [255, 255, 255, 160],
+                "Requirement": { "JudgementAtMost": [2, 0] }
+            },
+            {
+                "Name": "MILL",
+                "Color": [255, 160, 255, 255],
+                "Requirement": { "JudgementAtMost": [1, 0] }
+            }
+        ],
+        "Grades": [
+            { "Name": "D", "Accuracy": 0.0, "Color": [255, 255, 80, 80] },
+            { "Name": "C", "Accuracy": 0.7, "Color": [255, 255, 80, 255] },
+            { "Name": "B", "Accuracy": 0.8, "Color": [255, 0, 80, 255] },
+            { "Name": "A", "Accuracy": 0.9, "Color": [255, 0, 255, 100] },
+            { "Name": "S", "Accuracy": 0.95, "Color": [255, 246, 234, 128] },
+            { "Name": "SS", "Accuracy": 1.0, "Color": [255, 255, 255, 160] }
+        ],
+        "HitMechanics": {
+            "NotePriority": "OsuMania",
+            "GhostTapJudgement": null
+        },
+        "HoldMechanics": {
+            "CombineHeadAndTail": {
+                "OsuMania": {
+                    "Window320": 19.5,
+                    "Window300": "{{w300 * 1.1}}",
+                    "Window200": "{{w200}}",
+                    "Window100": "{{w100}}",
+                    "Window50": "{{w50}}",
+                    "Window0": "{{w0}}",
+                    "WindowOverhold200": "{{overhold200}}",
+                    "WindowOverhold100": "{{overhold100}}"
+                }
+            }
+        },
+        "Accuracy": {
+            "PointsPerJudgement": [1.0, 1.0, 0.6666666667, 0.3333333333, 0.1666666667, 0.0]
+        },
+        "Formatting": {
+            "DecimalPlaces": "TWO"
+        }
+    }
+}

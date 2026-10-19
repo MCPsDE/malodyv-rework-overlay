@@ -1,0 +1,36 @@
+syntax = "proto3";
+
+package malody;
+
+message ReplayFile {
+    string title = 1;
+    string artist = 2;
+    string creator = 3;
+    string version = 4;
+    string chart_hash = 5;
+    string player = 6;
+    uint32 user_id = 7;
+    // ScoreRecord score = 8;  // 暂不定义，解析时忽略
+    repeated Record records = 9;
+    // Judge judge = 10;       // 暂不定义
+    int32 seed = 11;
+    uint32 time = 12;
+    int32 client = 13;
+    string skinref = 14;
+}
+
+message Record {
+    int32 time = 1;
+    int32 index = 2;
+    repeated Cell cells = 3;
+}
+
+message Cell {
+    oneof cell_oneof {
+        uint32 input_indexed_down = 1;
+        uint32 input_indexed_up = 2;
+        uint32 input_key_down = 11;
+        uint32 input_key_up = 12;
+        // 其他 oneof 字段我们可以忽略，protobuf 会保留在未知字段中，不影响解析
+    }
+}

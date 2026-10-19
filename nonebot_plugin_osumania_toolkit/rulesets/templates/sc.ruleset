@@ -1,0 +1,140 @@
+{
+  "Template": {
+    "Type": "formula",
+    "Name": "sc",
+    "Summary": "Interlude SC",
+    "ArgumentName": "judge",
+    "Aliases": ["j"],
+    "Default": 4,
+    "Min": 2,
+    "Max": 9,
+    "Precision": 0,
+    "Variables": {
+      "perfect": "(9.0 if int(judge) == 9 else 45.0 * (10.0 - float(judge)) / 6.0)",
+      "w_marv": "perfect * 0.5",
+      "w_perf": "perfect",
+      "w_great": "perfect * 2.0",
+      "w_good": "perfect * 3.0",
+      "w_bad": "max(180.0, perfect * 4.0)",
+      "miss_penalty": "(-20.0 if int(judge) == 9 else -10.0 if int(judge) == 8 else -4.7 if int(judge) == 7 else -2.6 if int(judge) == 6 else -1.6 if int(judge) == 5 else -1.0 if int(judge) == 4 else -0.6 if int(judge) == 3 else -0.4)",
+      "judge_text": "int(judge)"
+    }
+  },
+  "Ruleset": {
+    "Name": "SC J{{judge_text}}",
+    "Description": "The 'official' scoring system of Interlude, tuned for a balanced experience",
+    "Judgements": [
+      {
+        "Name": "Marvellous",
+        "Color": [255, 0, 255, 255],
+        "BreaksCombo": false,
+        "TimingWindows": ["{{-w_marv}}", "{{w_marv}}"]
+      },
+      {
+        "Name": "Perfect",
+        "Color": [255, 255, 255, 0],
+        "BreaksCombo": false,
+        "TimingWindows": ["{{-w_perf}}", "{{w_perf}}"]
+      },
+      {
+        "Name": "Great",
+        "Color": [255, 0, 255, 100],
+        "BreaksCombo": false,
+        "TimingWindows": ["{{-w_great}}", "{{w_great}}"]
+      },
+      {
+        "Name": "Good",
+        "Color": [255, 0, 0, 255],
+        "BreaksCombo": true,
+        "TimingWindows": ["{{-w_good}}", "{{w_good}}"]
+      },
+      {
+        "Name": "Bad",
+        "Color": [255, 255, 0, 255],
+        "BreaksCombo": true,
+        "TimingWindows": ["{{-w_bad}}", "{{w_bad}}"]
+      },
+      {
+        "Name": "Miss",
+        "Color": [255, 255, 0, 0],
+        "BreaksCombo": true,
+        "TimingWindows": null
+      }
+    ],
+    "Lamps": [
+      {
+        "Name": "SDCB",
+        "Color": [255, 255, 160, 160],
+        "Requirement": { "ComboBreaksAtMost": 9 }
+      },
+      {
+        "Name": "1CB",
+        "Color": [255, 160, 160, 160],
+        "Requirement": { "ComboBreaksAtMost": 1 }
+      },
+      {
+        "Name": "FC",
+        "Color": [255, 80, 255, 80],
+        "Requirement": { "ComboBreaksAtMost": 0 }
+      },
+      {
+        "Name": "SDG",
+        "Color": [255, 160, 255, 160],
+        "Requirement": { "JudgementAtMost": [2, 9] }
+      },
+      {
+        "Name": "1G",
+        "Color": [255, 200, 160, 255],
+        "Requirement": { "JudgementAtMost": [2, 1] }
+      },
+      {
+        "Name": "PFC",
+        "Color": [255, 255, 255, 80],
+        "Requirement": { "JudgementAtMost": [2, 0] }
+      },
+      {
+        "Name": "SDP",
+        "Color": [255, 255, 255, 160],
+        "Requirement": { "JudgementAtMost": [1, 9] }
+      },
+      {
+        "Name": "1P",
+        "Color": [255, 255, 160, 255],
+        "Requirement": { "JudgementAtMost": [1, 1] }
+      },
+      {
+        "Name": "MFC",
+        "Color": [255, 160, 255, 255],
+        "Requirement": { "JudgementAtMost": [1, 0] }
+      }
+    ],
+    "Grades": [
+      { "Name": "D",  "Accuracy": 0.0,     "Color": [255, 200, 163, 155] },
+      { "Name": "C-", "Accuracy": 0.89995, "Color": [255, 194, 162, 182] },
+      { "Name": "C",  "Accuracy": 0.90995, "Color": [255, 202, 153, 183] },
+      { "Name": "B-", "Accuracy": 0.91995, "Color": [255, 163, 190, 207] },
+      { "Name": "B",  "Accuracy": 0.92995, "Color": [255, 149, 193, 220] },
+      { "Name": "A-", "Accuracy": 0.93995, "Color": [255, 148, 210, 180] },
+      { "Name": "A",  "Accuracy": 0.94995, "Color": [255, 134, 227, 183] },
+      { "Name": "A+", "Accuracy": 0.95995, "Color": [255, 127, 231, 139] },
+      { "Name": "S-", "Accuracy": 0.96995, "Color": [255, 237, 205, 140] },
+      { "Name": "S",  "Accuracy": 0.97995, "Color": [255, 246, 234, 128] },
+      { "Name": "S+", "Accuracy": 0.98995, "Color": [255, 235, 200, 220] }
+    ],
+    "HitMechanics": {
+      "NotePriority": { "Interlude": 90.0 },
+      "GhostTapJudgement": null
+    },
+    "HoldMechanics": {
+      "CombineHeadAndTail": {
+        "HeadJudgementOr": [-180.0, 180.0, 3, 3]
+      }
+    },
+    "Accuracy": {
+      "PointsPerJudgement": [1.0, 0.9, 0.5, -0.5, "{{miss_penalty}}", "{{miss_penalty}}"]
+    },
+    "Formatting": {
+      "DecimalPlaces": "TWO"
+    }
+  }
+}

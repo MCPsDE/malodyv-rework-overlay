@@ -1,0 +1,121 @@
+{
+    "Accuracy": {
+        "PointsPerJudgement": [1, 0.75, 0.4, 0]
+    },
+    "Description": "Simulates Malody's scoring system, Pro A",
+    "Formatting": {
+        "DecimalPlaces": "TWO"
+    },
+    "Grades": [{
+        "Accuracy": 0,
+        "Color": [255, 31, 128, 78],
+        "Name": "M0"
+    }, {
+        "Accuracy": 0.7,
+        "Color": [255, 37, 153, 93],
+        "Name": "M1"
+    }, {
+        "Accuracy": 0.8,
+        "Color": [255, 43, 174, 106],
+        "Name": "M2"
+    }, {
+        "Accuracy": 0.9,
+        "Color": [255, 49, 200, 123],
+        "Name": "M3"
+    }, {
+        "Requirement": [
+            { "Accuracy" : 0.95 },
+            { "JudgementAtMost": [3, 0] }
+        ],
+        "Color": [255, 54, 224, 137],
+        "Name": "M4"
+    }, {
+        "Accuracy": 1,
+        "Color": [255, 59, 238, 146],
+        "Name": "M5"
+    }],
+    "HitMechanics": {
+        "GhostTapJudgement": null,
+        "NotePriority": "Etterna"
+    },
+    "HoldMechanics": {
+        "OnlyRequireHold": 150
+    },
+    "Judgements": [{
+        "BreaksCombo": false,
+        "Color": [255, 242, 79, 88],
+        "Name": "BEST",
+        "TimingWindows": [-45, 45]
+    }, {
+        "BreaksCombo": false,
+        "Color": [255, 234, 235, 29],
+        "Name": "COOL",
+        "TimingWindows": [-90, 90]
+    }, {
+        "BreaksCombo": false,
+        "Color": [255, 20, 216, 156],
+        "Name": "GOOD",
+        "TimingWindows": [-126, 126]
+    }, {
+        "BreaksCombo": true,
+        "Color": [255, 150, 150, 150],
+        "Name": "MISS",
+        "TimingWindows": [-150, 150]
+    }],
+    "Lamps": [{
+        "Color": [255, 255, 160, 160],
+        "Name": "SDCB",
+        "Requirement": {
+            "ComboBreaksAtMost": 9
+        }
+    }, {
+        "Color": [255, 160, 160, 160],
+        "Name": "MF",
+        "Requirement": {
+            "ComboBreaksAtMost": 1
+        }
+    }, {
+        "Color": [255, 80, 255, 80],
+        "Name": "FC",
+        "Requirement": {
+            "ComboBreaksAtMost": 0
+        }
+    }, {
+        "Color": [255, 160, 255, 160],
+        "Name": "SDG",
+        "Requirement": {
+            "JudgementAtMost": [2, 9]
+        }
+    }, {
+        "Color": [255, 200, 160, 255],
+        "Name": "BF",
+        "Requirement": {
+            "JudgementAtMost": [2, 1]
+        }
+    }, {
+        "Color": [255, 255, 255, 80],
+        "Name": "PFC",
+        "Requirement": {
+            "JudgementAtMost": [2, 0]
+        }
+    }, {
+        "Color": [255, 255, 255, 160],
+        "Name": "SDC",
+        "Requirement": {
+            "JudgementAtMost": [1, 9]
+        }
+    }, {
+        "Color": [255, 255, 160, 255],
+        "Name": "WF",
+        "Requirement": {
+            "JudgementAtMost": [1, 1]
+        }
+    }, {
+        "Color": [255, 160, 255, 255],
+        "Name": "MFC",
+        "Requirement": {
+            "JudgementAtMost": [1, 0]
+        }
+    }],
+    "Name": "Malody Pro (Judge A)"
+}

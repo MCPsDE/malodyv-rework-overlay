@@ -37,9 +37,6 @@ public partial class MainWindow : Window
             ["opacity"] = ("卡片透明度", "Card opacity"),
             ["position"] = ("卡片位置", "Card position"),
             ["apply"] = ("应用", "Apply"),
-            ["reference"] = ("参考计算路径", "Reference calculation paths"),
-            ["python"] = ("Python", "Python"),
-            ["toolkit"] = ("工具包", "Toolkit"),
             ["save"] = ("保存设置", "Save settings"),
             ["ready"] = ("卡片资源已就绪", "Card resources are ready"),
             ["cardReady"] = ("卡片已更新", "Card updated"),
@@ -163,8 +160,6 @@ public partial class MainWindow : Window
         OpacitySlider.Value = _settings.Opacity * 100;
         LeftBox.Text = _settings.Left.ToString("0", CultureInfo.InvariantCulture);
         TopBox.Text = _settings.Top.ToString("0", CultureInfo.InvariantCulture);
-        PythonBox.Text = _settings.PythonExecutable;
-        ToolkitBox.Text = _settings.ToolkitRoot;
         HotkeyButton.Content = _settings.ToggleHotkey;
         _overlay.ApplySettings();
     }
@@ -190,9 +185,6 @@ public partial class MainWindow : Window
         OpacityLabel.Text = T("opacity");
         PositionTitle.Text = T("position");
         ApplyPositionButton.Content = T("apply");
-        ReferenceTitle.Text = T("reference");
-        PythonLabel.Text = T("python");
-        ToolkitLabel.Text = T("toolkit");
         SaveButton.Content = T("save");
         HotkeyButton.Content = _capturingHotkey ? T("pressHotkey") : _settings.ToggleHotkey;
         HotkeyButton.ToolTip = T("hotkeyTooltip");
@@ -349,8 +341,6 @@ public partial class MainWindow : Window
             _settings.Left = left;
         if (double.TryParse(TopBox.Text, NumberStyles.Float, CultureInfo.InvariantCulture, out var top))
             _settings.Top = top;
-        _settings.PythonExecutable = PythonBox.Text.Trim();
-        _settings.ToolkitRoot = ToolkitBox.Text.Trim();
     }
 
     private void ApplyVisibility()
