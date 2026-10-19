@@ -116,8 +116,6 @@ public partial class OverlayWindow : Window
         ApplyCardOpacity();
     }
 
-    public event Action? GeometryChanged;
-
     protected override void OnSourceInitialized(EventArgs e)
     {
         base.OnSourceInitialized(e);
@@ -201,7 +199,6 @@ public partial class OverlayWindow : Window
             _settings.Height = Height;
         }
 
-        GeometryChanged?.Invoke();
         e.Handled = true;
     }
 

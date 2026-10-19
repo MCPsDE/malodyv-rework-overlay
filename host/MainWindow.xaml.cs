@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Input;
@@ -35,11 +34,11 @@ public partial class MainWindow : Window
             ["dragCard"] = ("按住卡片拖动", "Drag card to move"),
             ["hideDuringPlay"] = ("游玩时隐藏，结算后恢复", "Hide during play, restore at results"),
             ["opacity"] = ("卡片透明度", "Card opacity"),
-            ["position"] = ("卡片位置", "Card position"),
-            ["apply"] = ("应用", "Apply"),
             ["save"] = ("保存设置", "Save settings"),
             ["ready"] = ("卡片资源已就绪", "Card resources are ready"),
             ["cardReady"] = ("卡片已更新", "Card updated"),
+            ["botSourceCurrent"] = ("Bot 卡片目录与远程版本一致", "Bot card directory matches the remote version"),
+            ["botSourceUpdated"] = ("Bot 卡片目录已从远程更新", "Bot card directory updated from remote"),
             ["settingsSaved"] = ("设置已保存", "Settings saved"),
             ["pressHotkey"] = ("请按下新快捷键", "Press a new shortcut"),
             ["hotkeyTooltip"] = ("点击后按下新的快捷键", "Click, then press a new shortcut"),
@@ -78,7 +77,6 @@ public partial class MainWindow : Window
         _settings.Height = Math.Clamp(_settings.Height, 300, 1600);
         _runtime = new OverlayRuntime(_settings);
         _overlay = new OverlayWindow(_runtime, _settings);
-        _overlay.GeometryChanged += Overlay_GeometryChanged;
         _runtime.StatusChanged += Runtime_StatusChanged;
         _runtime.SelectionReceived += Runtime_SelectionReceived;
         _runtime.GameStateChanged += Runtime_GameStateChanged;
@@ -125,11 +123,13 @@ public partial class MainWindow : Window
             return;
         }
         if (sync.Updated)
-            SetRuntimeStatus(null, _settings.Language == "en" ? "Bot card directory updated." : "Bot 卡片目录已更新。");
+            SetRuntimeStatus("botSourceUpdated");
         else if (sync.Error is not null)
             SetRuntimeStatus(null, _settings.Language == "en"
                 ? $"Using bundled bot card; remote sync failed: {sync.Error}"
                 : $"当前使用随包 Bot 卡片；远程同步失败：{sync.Error}");
+        else if (_settings.BotPluginSyncEnabled && !string.IsNullOrWhiteSpace(_settings.BotPluginManifestUrl))
+            SetRuntimeStatus("botSourceCurrent");
         var update = await UpdateChecker.CheckAsync(_settings);
         if (update is null || !IsVisible)
             return;
@@ -158,8 +158,6 @@ public partial class MainWindow : Window
         DragBox.IsChecked = _settings.DragEnabled;
         HideDuringPlayBox.IsChecked = _settings.HideDuringPlay;
         OpacitySlider.Value = _settings.Opacity * 100;
-        LeftBox.Text = _settings.Left.ToString("0", CultureInfo.InvariantCulture);
-        TopBox.Text = _settings.Top.ToString("0", CultureInfo.InvariantCulture);
         HotkeyButton.Content = _settings.ToggleHotkey;
         _overlay.ApplySettings();
     }
@@ -183,8 +181,6 @@ public partial class MainWindow : Window
         DragBox.Content = T("dragCard");
         HideDuringPlayBox.Content = T("hideDuringPlay");
         OpacityLabel.Text = T("opacity");
-        PositionTitle.Text = T("position");
-        ApplyPositionButton.Content = T("apply");
         SaveButton.Content = T("save");
         HotkeyButton.Content = _capturingHotkey ? T("pressHotkey") : _settings.ToggleHotkey;
         HotkeyButton.ToolTip = T("hotkeyTooltip");
@@ -307,13 +303,6 @@ public partial class MainWindow : Window
         _overlay.ApplySettings();
     }
 
-    private void ApplyPosition_Click(object sender, RoutedEventArgs e)
-    {
-        ReadSettingsFromControls();
-        _overlay.ApplySettings();
-        ApplyVisibility();
-    }
-
     private void SaveSettings_Click(object sender, RoutedEventArgs e)
     {
         ReadSettingsFromControls();
@@ -337,10 +326,6 @@ public partial class MainWindow : Window
         _settings.DragEnabled = DragBox.IsChecked == true;
         _settings.HideDuringPlay = HideDuringPlayBox.IsChecked == true;
         _settings.Opacity = Math.Clamp(OpacitySlider.Value / 100.0, 0.3, 1.0);
-        if (double.TryParse(LeftBox.Text, NumberStyles.Float, CultureInfo.InvariantCulture, out var left))
-            _settings.Left = left;
-        if (double.TryParse(TopBox.Text, NumberStyles.Float, CultureInfo.InvariantCulture, out var top))
-            _settings.Top = top;
     }
 
     private void ApplyVisibility()
@@ -349,19 +334,6 @@ public partial class MainWindow : Window
             _overlay.Show();
         else
             _overlay.Hide();
-    }
-
-    private void Overlay_GeometryChanged()
-    {
-        if (!Dispatcher.CheckAccess())
-        {
-            Dispatcher.BeginInvoke(new Action(Overlay_GeometryChanged));
-            return;
-        }
-        if (!LeftBox.IsKeyboardFocused)
-            LeftBox.Text = _settings.Left.ToString("0", CultureInfo.InvariantCulture);
-        if (!TopBox.IsKeyboardFocused)
-            TopBox.Text = _settings.Top.ToString("0", CultureInfo.InvariantCulture);
     }
 
     private void LanguageButton_Click(object sender, RoutedEventArgs e)
