@@ -10,6 +10,7 @@ $releaseParent = [IO.Path]::GetDirectoryName($release)
 $hostProject = Join-Path $root "host\MalodyV.ReworkOverlay.Host.csproj"
 $pluginProject = Join-Path $root "plugin\MalodyV.ReworkOverlay.Plugin.csproj"
 $bundledBotPlugin = Join-Path $root "nonebot_plugin_rework"
+$hostRelease = Join-Path $release "MalodyVReworkOverlay"
 
 if ([string]::IsNullOrWhiteSpace($BotPluginSource)) {
     $candidate = Join-Path $root "..\..\nonebot_plugin_rework"
@@ -36,8 +37,9 @@ if (Test-Path -LiteralPath $releaseResolved) {
 }
 New-Item -ItemType Directory -Force $releaseResolved | Out-Null
 
+New-Item -ItemType Directory -Force $hostRelease | Out-Null
 dotnet publish $hostProject --configuration Release --runtime win-x64 --self-contained true `
-    -p:PublishSingleFile=false -p:PublishTrimmed=false -o $releaseResolved
+    -p:PublishSingleFile=false -p:PublishTrimmed=false -o $hostRelease
 if ($LASTEXITCODE -ne 0) {
     throw "Host publish failed with exit code $LASTEXITCODE."
 }
@@ -84,7 +86,7 @@ function Get-DirectorySha256([string]$Directory) {
 }
 
 $localBotHash = Get-DirectorySha256 $bundledBotPlugin
-$publishedBotPlugin = Join-Path $releaseResolved "nonebot_plugin_rework"
+$publishedBotPlugin = Join-Path $hostRelease "nonebot_plugin_rework"
 if (-not (Test-Path -LiteralPath (Join-Path $publishedBotPlugin "tosu_plugin\index.html"))) {
     throw "Publish output does not contain the complete nonebot_plugin_rework directory."
 }
@@ -94,7 +96,7 @@ if ($publishedBotHash -ne $localBotHash) {
 }
 
 $pluginHash = (Get-FileHash -LiteralPath (Join-Path $releaseResolved "MalodyV.ReworkOverlay.Plugin.dll") -Algorithm SHA256).Hash
-$hostHash = (Get-FileHash -LiteralPath (Join-Path $releaseResolved "MalodyV.ReworkOverlay.exe") -Algorithm SHA256).Hash
+$hostHash = (Get-FileHash -LiteralPath (Join-Path $hostRelease "MalodyV.ReworkOverlay.exe") -Algorithm SHA256).Hash
 $hostVersion = ([xml](Get-Content -LiteralPath $hostProject -Raw)).Project.PropertyGroup.Version | Select-Object -First 1
 $manifest = [ordered]@{
     version = $hostVersion

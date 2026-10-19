@@ -13,11 +13,12 @@ From Windows PowerShell with .NET 8 and .NET 6 SDKs installed:
 .\Build-Release.ps1
 ```
 
-The output is `release\MalodyVReworkOverlay`. It contains the host, BepInEx
-plugin, and the complete `nonebot_plugin_rework` directory. Copy the entire
-output directory to `MalodyV\BepInEx\plugins\MalodyVReworkOverlay` after
-BepInEx has generated the IL2CPP interop assemblies once. The runtime installer
-is maintained in the parent Bot repository at `malodyv_tools/installer`.
+The output is `release\MalodyVReworkOverlay`. Its plugin DLL is at the package
+root so BepInEx can discover it; the companion host and complete
+`nonebot_plugin_rework` directory are under `MalodyVReworkOverlay\`. Copy the
+package contents into `MalodyV\BepInEx\plugins` after BepInEx has generated the
+IL2CPP interop assemblies once. The runtime installer is maintained in the
+parent Bot repository at `malodyv_tools/installer`.
 
 When built inside the Bot repository, `Build-Release.ps1` first mirrors its
 current Bot plugin directory into this repository. A standalone clone keeps
