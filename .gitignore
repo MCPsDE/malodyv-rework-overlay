@@ -1,0 +1,11 @@
+bin/
+obj/
+release/
+plugin/bin/
+plugin/obj/
+host/bin/
+host/obj/
+installer/bin/
+installer/obj/
+*.user
+*.suo
