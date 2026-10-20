@@ -18,7 +18,7 @@ public sealed class Plugin : BasePlugin
 {
     public const string PluginGuid = "com.baka666.malodyv.reworkoverlay";
     public const string PluginName = "MalodyV Rework Overlay";
-    public const string PluginVersion = "1.3.1";
+    public const string PluginVersion = "1.3.2";
     internal const string UpdateManifestUrl =
         "https://raw.githubusercontent.com/MCPsDE/malodyv-rework-overlay/main/manifest.json";
     private const string RuntimeChartTypeName = "Malody.Chart.iqy";
@@ -243,7 +243,8 @@ internal sealed record SelectionMessage(
     uint Mods = 0,
     double SpeedRate = 1,
     int PlayMode = -1,
-    int RandomSeed = 0);
+    int RandomSeed = 0,
+    string? TurboSignature = null);
 
 internal sealed class PluginUpdateManifest
 {
@@ -258,7 +259,7 @@ internal static class SelectionPipe
     private static readonly Channel<SelectionMessage> Updates = Channel.CreateBounded<SelectionMessage>(
         new BoundedChannelOptions(4) { FullMode = BoundedChannelFullMode.DropOldest, SingleReader = true, SingleWriter = false });
     private static string? _lastIdentity;
-    private static object? _lastChart;
+    private static int _clearPublished;
     private static bool? _lastGameState;
     private static BepInEx.Logging.ManualLogSource? _log;
     private static readonly HttpClient UpdateHttp = new() { Timeout = TimeSpan.FromSeconds(5) };
@@ -328,33 +329,34 @@ internal static class SelectionPipe
     private static PropertyInfo? _modProperty;
     private static PropertyInfo? _modForPlayProperty;
     private static PropertyInfo? _playModeProperty;
+    private static FieldInfo? _playModeField;
     private static PropertyInfo? _customJudgeProperty;
+    private static PropertyInfo? _playSpeedProperty;
     private static PropertyInfo? _randomSeedBackingProperty;
     private static PropertyInfo? _customJudgeSpeedProperty;
+    private static FieldInfo? _customJudgeSpeedField;
     private static MethodInfo? _canPlayModMethod;
     private static bool _canPlayModResolved;
+    private static int _turboMembersDiagnosticWritten;
 
     public static void PublishCurrentChart()
     {
         try
         {
             ResolvePlayInfoProperties();
-            object? chart = null;
-            try
+            var instance = _localPlayInfoProperty?.GetValue(null);
+            var chart = instance is null ? null : _chartProperty!.GetValue(instance);
+            if (chart is null)
             {
-                var instance = _localPlayInfoProperty?.GetValue(null);
-                chart = instance is null ? null : _chartProperty!.GetValue(instance);
+                Clear();
+                return;
             }
-            catch (Exception exception)
-            {
-                DiagnosticWarning($"Current PlayInfo read failed; using the last selected chart: {exception.Message}");
-            }
-
-            PublishChart(chart ?? _lastChart);
+            PublishChart(chart);
         }
         catch (Exception exception)
         {
             DiagnosticWarning($"Initial current chart read failed: {exception}");
+            Clear();
         }
     }
 
@@ -410,21 +412,28 @@ internal static class SelectionPipe
                 $"_{property.Name}_k__BackingField", StringComparison.Ordinal)));
         _playModeProperty = properties.FirstOrDefault(property =>
             string.Equals(property.PropertyType.FullName, "Malody.Play.PlayModeType", StringComparison.Ordinal));
-        _customJudgeProperty = properties.FirstOrDefault(property => IsCustomJudgeType(property.PropertyType));
+        _playModeField = match.Type.GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)
+            .FirstOrDefault(field => string.Equals(field.FieldType.FullName, "Malody.Play.PlayModeType", StringComparison.Ordinal));
+        _playSpeedProperty = properties.FirstOrDefault(property =>
+            string.Equals(property.Name, "PlaySpeed", StringComparison.OrdinalIgnoreCase)
+            && property.PropertyType == typeof(float));
+        _customJudgeProperty = properties.FirstOrDefault(property => HasMember(property.PropertyType, "audioSpeed"))
+            ?? properties.FirstOrDefault(property => IsCustomJudgeType(property.PropertyType));
         _randomSeedBackingProperty = properties.FirstOrDefault(property =>
             property.PropertyType == typeof(int) && property.Name.Contains("BackingField", StringComparison.Ordinal));
         if (_customJudgeProperty is not null)
         {
-            _customJudgeSpeedProperty = _customJudgeProperty.PropertyType
-                .GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)
-                .Where(property => property.PropertyType == typeof(float))
-                .OrderBy(property => property.MetadataToken)
-                .FirstOrDefault();
+            _customJudgeSpeedProperty = FindProperty(_customJudgeProperty.PropertyType, "audioSpeed");
+            _customJudgeSpeedField = _customJudgeProperty.PropertyType
+                .GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)
+                .FirstOrDefault(field => string.Equals(field.Name, "audioSpeed", StringComparison.OrdinalIgnoreCase));
         }
 
         Diagnostic($"Resolved PlayInfo state members: Mod={_modProperty?.Name ?? "<missing>"}, " +
-            $"ModForPlay={_modForPlayProperty?.Name ?? "<missing>"}, PlayMode={_playModeProperty?.Name ?? "<missing>"}, " +
-            $"Turbo={_customJudgeProperty?.Name ?? "<missing>"}, Seed={_randomSeedBackingProperty?.Name ?? "<missing>"}.");
+            $"ModForPlay={_modForPlayProperty?.Name ?? "<missing>"}, " +
+            $"PlayMode={_playModeProperty?.Name ?? _playModeField?.Name ?? "<missing>"}, " +
+                $"PlaySpeed={_playSpeedProperty?.Name ?? "<missing>"}, " +
+                $"Turbo={_customJudgeProperty?.Name ?? "<missing>"}, Seed={_randomSeedBackingProperty?.Name ?? "<missing>"}.");
     }
 
     private static bool IsCustomJudgeType(Type type)
@@ -432,8 +441,10 @@ internal static class SelectionPipe
         try
         {
             var properties = type.GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+            var fields = type.GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
             return properties.Count(property => property.PropertyType == typeof(float)) >= 2 &&
-                properties.Count(property => property.PropertyType == typeof(bool)) >= 4;
+                properties.Count(property => property.PropertyType == typeof(bool)) >= 4 ||
+                fields.Any(field => string.Equals(field.Name, "audioSpeed", StringComparison.OrdinalIgnoreCase));
         }
         catch
         {
@@ -499,57 +510,131 @@ internal static class SelectionPipe
                     $"properties=[{properties}]; metadata=[{metadataProperties}]).");
             }
             var index = Convert.ToUInt32(rawIndex);
-            _lastChart = chart;
-            var (mods, speedRate, playMode, randomSeed) = ReadActiveModState();
-            var identity = $"{Path.GetFullPath(path)}|{index}|{version}|{mods}|{speedRate.ToString("0.#####", System.Globalization.CultureInfo.InvariantCulture)}|{playMode}|{randomSeed}";
+            var (mods, speedRate, playMode, randomSeed, turboSignature, valid) = ReadActiveModState();
+            if (!valid)
+            {
+                DiagnosticWarning("Active Mod/Turbo state is unavailable or invalid; clearing stale card analysis.");
+                Clear();
+                return;
+            }
+            var identity = $"{Path.GetFullPath(path)}|{index}|{version}|{mods}|{speedRate.ToString("0.#####", System.Globalization.CultureInfo.InvariantCulture)}|{playMode}|{randomSeed}|{turboSignature}";
+            Interlocked.Exchange(ref _clearPublished, 0);
             if (string.Equals(Interlocked.Exchange(ref _lastIdentity, identity), identity, StringComparison.OrdinalIgnoreCase))
                 return;
             _log?.LogInfo($"Selected chart: {version} ({path}, difficulty {index + 1}); mods={mods}; speed={speedRate:0.##}x.");
             if (!Updates.Writer.TryWrite(new SelectionMessage("selection", path, index, identity, version,
-                    Mods: mods, SpeedRate: speedRate, PlayMode: playMode, RandomSeed: randomSeed)))
+                    Mods: mods, SpeedRate: speedRate, PlayMode: playMode, RandomSeed: randomSeed,
+                    TurboSignature: turboSignature)))
                 _log?.LogWarning("The selected chart update could not be queued for the overlay host.");
         }
         catch (Exception exception)
         {
             _log?.LogWarning($"Unable to read selected chart: {exception.Message}");
+            Clear();
         }
     }
 
-    private static (uint Mods, double SpeedRate, int PlayMode, int RandomSeed) ReadActiveModState()
+    private static (uint Mods, double SpeedRate, int PlayMode, int RandomSeed, string TurboSignature, bool Valid) ReadActiveModState()
     {
         try
         {
             ResolvePlayInfoProperties();
-            var local = _localPlayInfoProperty?.GetValue(null);
+            var local = TryGetPropertyValue(_localPlayInfoProperty, null);
             if (local is null)
-                return (0, 1, -1, 0);
+                return (0, 1, -1, 0, "unavailable-local", true);
 
             var localType = local.GetType();
-            var rawMods = _modProperty?.GetValue(local) ?? ReadMember(localType, local, "Mod");
-            var mods = rawMods is null ? 0u : Convert.ToUInt32(rawMods);
-            var mode = _playModeProperty?.GetValue(local) ?? ReadMember(localType, local, "playMode");
+            var rawMods = TryGetPropertyValue(_modProperty, local) ?? ReadMember(localType, local, "Mod");
+            if (rawMods is null)
+                return (0, 1, -1, 0, "unavailable-mods", true);
+            var mods = Convert.ToUInt32(rawMods);
+            var mode = TryGetPropertyValue(_playModeProperty, local) ?? TryGetFieldValue(_playModeField, local) ??
+                ReadMember(localType, local, "playMode");
             mods = FilterPlayableMods(mods, rawMods?.GetType(), mode);
-            var customJudge = _customJudgeProperty?.GetValue(local) ?? ReadMember(localType, local, "customJudge");
-            var speed = customJudge is null ? 1d : ReadDouble(
-                _customJudgeSpeedProperty?.GetValue(customJudge) ?? ReadMember(customJudge.GetType(), customJudge, "audioSpeed"), 1d);
-            var holdsEnabled = (mods & (1u << 15)) != 0;
-            if (customJudge is null || holdsEnabled)
+            var customJudge = TryGetPropertyValue(_customJudgeProperty, local) ?? ReadMember(localType, local, "customJudge");
+            var speed = ReadDouble(TryGetPropertyValue(_playSpeedProperty, local), double.NaN);
+            if (!double.IsFinite(speed))
+                speed = ReadCustomJudgeAudioSpeed(customJudge);
+            if (double.IsFinite(speed) && (speed < 0.5 || speed > 2.0))
+            {
+                DiagnosticWarning($"Turbo speed {speed:0.###} is outside MalodyV's supported 0.5-2.0 range.");
+                speed = double.NaN;
+            }
+            if (!double.IsFinite(speed) || speed <= 0)
             {
                 if ((mods & 0x20u) != 0) speed = 1.5;
                 else if ((mods & 0x10u) != 0) speed = 1.2;
                 else if ((mods & 0x100u) != 0) speed = 0.8;
-                else if (customJudge is null) speed = 1d;
+                else speed = 1d;
             }
 
-            var randomSeed = _randomSeedBackingProperty?.GetValue(local) ?? ReadMember(localType, local, "RandomSeed");
+            var randomSeed = TryGetPropertyValue(_randomSeedBackingProperty, local) ?? ReadMember(localType, local, "RandomSeed");
             return (mods, double.IsFinite(speed) && speed > 0 ? speed : 1d,
-                mode is null ? -1 : Convert.ToInt32(mode), randomSeed is null ? 0 : Convert.ToInt32(randomSeed));
+                mode is null ? -1 : Convert.ToInt32(mode), randomSeed is null ? 0 : Convert.ToInt32(randomSeed),
+                BuildTurboSignature(customJudge), true);
         }
         catch (Exception exception)
         {
             _log?.LogWarning($"Unable to read active MalodyV mods: {exception.Message}");
-            return (0, 1, -1, 0);
+            return (0, 1, -1, 0, "unavailable", true);
         }
+    }
+
+    private static double ReadCustomJudgeAudioSpeed(object? customJudge)
+    {
+        if (customJudge is null)
+            return double.NaN;
+
+        var namedValue = TryGetPropertyValue(_customJudgeSpeedProperty, customJudge)
+            ?? TryGetFieldValue(_customJudgeSpeedField, customJudge)
+            ?? ReadMember(customJudge.GetType(), customJudge, "audioSpeed");
+        var speed = ReadDouble(namedValue, double.NaN);
+        if (double.IsFinite(speed))
+            return speed;
+
+        if (Interlocked.Exchange(ref _turboMembersDiagnosticWritten, 1) == 0)
+        {
+            var type = customJudge.GetType();
+            var fields = type.GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)
+                .Select(field => $"field {field.Name}:{field.FieldType.FullName}={FormatSignatureValue(TryGetFieldValue(field, customJudge))}");
+            var properties = type.GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)
+                .Where(property => property.GetMethod?.IsStatic != true)
+                .Select(property => $"property {property.Name}:{property.PropertyType.FullName}={FormatSignatureValue(TryGetPropertyValue(property, customJudge))}");
+            DiagnosticWarning($"Turbo profile audioSpeed was not readable on {type.FullName}; members=[{string.Join(", ", fields.Concat(properties))}].");
+        }
+
+        DiagnosticWarning("Turbo profile audioSpeed was not readable; using neutral 1.0x analysis speed.");
+        return double.NaN;
+    }
+
+    private static string BuildTurboSignature(object? customJudge)
+    {
+        if (customJudge is null)
+            return "none";
+
+        var type = customJudge.GetType();
+        var fieldValues = type.GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)
+            .Where(field => IsScalar(field.FieldType))
+            .Select(field => $"{field.Name}={FormatSignatureValue(TryGetFieldValue(field, customJudge))}");
+        var propertyValues = type.GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)
+            .Where(property => property.GetMethod?.IsStatic != true && IsScalar(property.PropertyType))
+            .Select(property => $"{property.Name}={FormatSignatureValue(TryGetPropertyValue(property, customJudge))}");
+        return string.Join(";", fieldValues.Concat(propertyValues));
+    }
+
+    private static bool IsScalar(Type type) =>
+        type.IsPrimitive || type.IsEnum || type == typeof(decimal) || type == typeof(string);
+
+    private static string FormatSignatureValue(object? value) => value switch
+    {
+        null => "<null>",
+        IFormattable formattable => formattable.ToString(null, System.Globalization.CultureInfo.InvariantCulture),
+        _ => value.ToString() ?? "<null>",
+    };
+
+    public static void QueueCurrentChartRefresh()
+    {
+        PublishCurrentChart();
     }
 
     private static uint FilterPlayableMods(uint mods, Type? modType, object? playMode)
@@ -594,14 +679,51 @@ internal static class SelectionPipe
 
     private static object? ReadMember(Type type, object instance, string name)
     {
-        var property = type.GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)
-            .FirstOrDefault(candidate => string.Equals(candidate.Name, name, StringComparison.OrdinalIgnoreCase));
-        if (property is not null)
-            return property.GetValue(instance);
-        var field = type.GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)
-            .FirstOrDefault(candidate => string.Equals(candidate.Name, name, StringComparison.OrdinalIgnoreCase));
-        return field?.GetValue(instance);
+        try
+        {
+            var property = type.GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)
+                .FirstOrDefault(candidate => string.Equals(candidate.Name, name, StringComparison.OrdinalIgnoreCase));
+            if (property is not null)
+                return property.GetValue(instance);
+            var field = type.GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)
+                .FirstOrDefault(candidate => string.Equals(candidate.Name, name, StringComparison.OrdinalIgnoreCase));
+            return field?.GetValue(instance);
+        }
+        catch
+        {
+            return null;
+        }
     }
+
+    private static object? TryGetPropertyValue(PropertyInfo? property, object? instance)
+    {
+        try
+        {
+            return property?.GetValue(instance);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static object? TryGetFieldValue(FieldInfo? field, object? instance)
+    {
+        try
+        {
+            return field?.GetValue(instance);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static bool HasMember(Type type, string name) =>
+        type.GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)
+            .Any(property => string.Equals(property.Name, name, StringComparison.OrdinalIgnoreCase)) ||
+        type.GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)
+            .Any(field => string.Equals(field.Name, name, StringComparison.OrdinalIgnoreCase));
 
     private static double ReadDouble(object? value, double fallback) =>
         value is null ? fallback : Convert.ToDouble(value, System.Globalization.CultureInfo.InvariantCulture);
@@ -630,8 +752,8 @@ internal static class SelectionPipe
 
     public static void Clear()
     {
-        _lastChart = null;
-        if (Interlocked.Exchange(ref _lastIdentity, null) is not null)
+        var hadSelection = Interlocked.Exchange(ref _lastIdentity, null) is not null;
+        if (hadSelection || Interlocked.Exchange(ref _clearPublished, 1) == 0)
             Updates.Writer.TryWrite(new SelectionMessage("selection", null, 0, null, null));
     }
 
@@ -694,7 +816,7 @@ internal static class SelectionPatch
         if (__args.Length >= 2 && string.Equals(__args[0]?.ToString(), "ChangeChart", StringComparison.Ordinal))
             SelectionPipe.PublishChart(__args[1]);
         else if (__args.Length > 0 && string.Equals(__args[0]?.ToString(), "ChangeMod", StringComparison.Ordinal))
-            SelectionPipe.PublishCurrentChart();
+            SelectionPipe.QueueCurrentChartRefresh();
     }
 
     public static void ChartItemChanged(object __instance)
@@ -749,6 +871,6 @@ internal static class SelectionPatch
             SelectionPipe.PublishGameState(false);
     }
 
-    public static void ModSettingsChanged() => SelectionPipe.PublishCurrentChart();
+    public static void ModSettingsChanged() => SelectionPipe.QueueCurrentChartRefresh();
 
 }

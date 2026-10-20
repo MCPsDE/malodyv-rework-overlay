@@ -1,14 +1,14 @@
 <Window x:Class="MalodyV.ReworkOverlay.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="MalodyV Rework Overlay" Width="600" MinWidth="540" MaxWidth="680"
+        Title="MalodyV Rework Overlay" Width="520" MinWidth="460" MaxWidth="580"
         SizeToContent="Height" MaxHeight="700" WindowStartupLocation="CenterScreen"
         WindowStyle="None" AllowsTransparency="True" Background="Transparent"
         Foreground="{StaticResource TextPrimary}" PreviewKeyDown="Window_PreviewKeyDown">
-  <Border Margin="8" Background="{StaticResource WindowSurface}"
-          BorderBrush="{StaticResource Rule}" BorderThickness="1" CornerRadius="12">
+  <Border Margin="10" Background="{StaticResource WindowSurface}"
+          BorderBrush="#668DE6F5" BorderThickness="1" CornerRadius="16">
     <Border.Effect>
-      <DropShadowEffect Color="#000000" BlurRadius="24" ShadowDepth="8" Opacity="0.38" />
+      <DropShadowEffect Color="#000000" BlurRadius="28" ShadowDepth="8" Opacity="0.44" />
     </Border.Effect>
     <Grid Margin="22">
       <Grid.RowDefinitions>

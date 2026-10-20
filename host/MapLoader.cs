@@ -54,9 +54,9 @@ internal static class MapLoader
         var speedRate = double.IsFinite(selection.SpeedRate) && selection.SpeedRate > 0 ? selection.SpeedRate : 1d;
             var metrics = await CalculateReferenceMetricsAsync(osuText, speedRate);
         var identity = string.IsNullOrWhiteSpace(selection.Identity)
-            ? $"{sourcePath}|{selection.Index}|{selection.Mods}|{speedRate:0.#####}"
+            ? $"{sourcePath}|{selection.Index}|{selection.Mods}|{speedRate:0.#####}|{selection.PlayMode}|{selection.RandomSeed}|{selection.TurboSignature}"
             : selection.Identity!;
-        var analysisSignature = $"{selection.Mods}|{speedRate.ToString("0.#####", CultureInfo.InvariantCulture)}";
+        var analysisSignature = $"{selection.Mods}|{speedRate.ToString("0.#####", CultureInfo.InvariantCulture)}|{selection.PlayMode}|{selection.RandomSeed}|{selection.TurboSignature ?? "none"}";
         return new MapPayload(identity, sourcePath, selection.Index, osuText, background, metrics, title,
             selection.Mods, speedRate, analysisSignature);
     }

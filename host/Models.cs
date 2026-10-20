@@ -31,6 +31,9 @@ internal sealed class SelectionMessage
     [JsonPropertyName("randomSeed")]
     public int RandomSeed { get; init; }
 
+    [JsonPropertyName("turboSignature")]
+    public string? TurboSignature { get; init; }
+
     [JsonPropertyName("pluginVersion")]
     public string? PluginVersion { get; init; }
 

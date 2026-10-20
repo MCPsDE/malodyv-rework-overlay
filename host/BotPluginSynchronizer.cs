@@ -24,12 +24,22 @@ internal sealed record BotPluginSyncResult(bool Updated, string? Version, string
 internal static class BotPluginSynchronizer
 {
     private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(20) };
+    private static readonly HashSet<string> TextExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".css", ".html", ".js", ".json", ".mjs", ".py", ".txt",
+    };
     private const string DirectoryName = "nonebot_plugin_rework";
     private const string RepositoryArchiveUrl =
         "https://github.com/MCPsDE/nonebot-plugin-for-osumania4k/archive/refs/heads/main.zip";
     private const long MaximumArchiveBytes = 64 * 1024 * 1024;
     private const long MaximumExpandedBytes = 256 * 1024 * 1024;
     private const int MaximumArchiveEntries = 20_000;
+
+    static BotPluginSynchronizer()
+    {
+        Http.DefaultRequestHeaders.UserAgent.ParseAdd("MalodyV-Rework-Overlay");
+        Http.DefaultRequestHeaders.Accept.ParseAdd("application/json");
+    }
 
     public static async Task<BotPluginSyncResult> EnsureCurrentAsync(
         OverlaySettings settings,
@@ -145,11 +155,21 @@ internal static class BotPluginSynchronizer
             var relative = Path.GetRelativePath(directory, file).Replace(Path.DirectorySeparatorChar, '/');
             hash.AppendData(Encoding.UTF8.GetBytes(relative));
             hash.AppendData(new byte[] { 0 });
-            using var stream = File.OpenRead(file);
-            var buffer = new byte[128 * 1024];
-            int read;
-            while ((read = stream.Read(buffer, 0, buffer.Length)) > 0)
-                hash.AppendData(buffer, 0, read);
+            if (TextExtensions.Contains(Path.GetExtension(file)))
+            {
+                var text = Encoding.UTF8.GetString(File.ReadAllBytes(file))
+                    .Replace("\r\n", "\n", StringComparison.Ordinal)
+                    .Replace('\r', '\n');
+                hash.AppendData(Encoding.UTF8.GetBytes(text));
+            }
+            else
+            {
+                using var stream = File.OpenRead(file);
+                var buffer = new byte[128 * 1024];
+                int read;
+                while ((read = stream.Read(buffer, 0, buffer.Length)) > 0)
+                    hash.AppendData(buffer, 0, read);
+            }
             hash.AppendData(new byte[] { 0 });
         }
         return Convert.ToHexString(hash.GetHashAndReset());

@@ -62,19 +62,27 @@ function Get-DirectorySha256([string]$Directory) {
     $hash = [Security.Cryptography.IncrementalHash]::CreateHash([Security.Cryptography.HashAlgorithmName]::SHA256)
     $separator = [byte[]]@(0)
     $buffer = [byte[]]::new(131072)
+    $textExtensions = @(".css", ".html", ".js", ".json", ".mjs", ".py", ".txt")
     try {
         foreach ($relativePath in $relativePaths) {
             $hash.AppendData([Text.Encoding]::UTF8.GetBytes($relativePath))
             $hash.AppendData($separator)
             $filePath = Join-Path $Directory $relativePath.Replace('/', [IO.Path]::DirectorySeparatorChar)
-            $stream = [IO.File]::OpenRead($filePath)
-            try {
-                while (($read = $stream.Read($buffer, 0, $buffer.Length)) -gt 0) {
-                    $hash.AppendData($buffer, 0, $read)
-                }
+            if ($textExtensions -contains [IO.Path]::GetExtension($filePath).ToLowerInvariant()) {
+                $text = [Text.Encoding]::UTF8.GetString([IO.File]::ReadAllBytes($filePath))
+                $text = $text.Replace("`r`n", "`n").Replace("`r", "`n")
+                $hash.AppendData([Text.Encoding]::UTF8.GetBytes($text))
             }
-            finally {
-                $stream.Dispose()
+            else {
+                $stream = [IO.File]::OpenRead($filePath)
+                try {
+                    while (($read = $stream.Read($buffer, 0, $buffer.Length)) -gt 0) {
+                        $hash.AppendData($buffer, 0, $read)
+                    }
+                }
+                finally {
+                    $stream.Dispose()
+                }
             }
             $hash.AppendData($separator)
         }

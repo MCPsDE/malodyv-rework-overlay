@@ -102,25 +102,43 @@ public partial class MainWindow : Window
 
     private async void MainWindow_Loaded(object sender, RoutedEventArgs e)
     {
-        var sync = await BotPluginSynchronizer.EnsureCurrentAsync(_settings);
         var cardIndex = Path.Combine(AppContext.BaseDirectory,
             "nonebot_plugin_rework", "tosu_plugin", "index.html");
-        if (!File.Exists(cardIndex))
+        var runtimeStarted = false;
+        if (File.Exists(cardIndex))
         {
-            var detail = _settings.Language == "en"
-                ? $"Bot card assets are missing. Remote sync failed: {sync.Error ?? "unknown error"}"
-                : $"Bot 卡片资源缺失，远程同步失败：{sync.Error ?? "未知错误"}";
-            SetRuntimeStatus(null, detail);
-            return;
+            try
+            {
+                _runtime.Start();
+                runtimeStarted = true;
+            }
+            catch (Exception exception)
+            {
+                SetRuntimeStatus(null, exception.Message);
+                return;
+            }
         }
-        try
+
+        var sync = await BotPluginSynchronizer.EnsureCurrentAsync(_settings);
+        if (!runtimeStarted)
         {
-            _runtime.Start();
-        }
-        catch (Exception exception)
-        {
-            SetRuntimeStatus(null, exception.Message);
-            return;
+            if (!File.Exists(cardIndex))
+            {
+                var detail = _settings.Language == "en"
+                    ? $"Bot card assets are missing. Remote sync failed: {sync.Error ?? "unknown error"}"
+                    : $"Bot 卡片资源缺失，远程同步失败：{sync.Error ?? "未知错误"}";
+                SetRuntimeStatus(null, detail);
+                return;
+            }
+            try
+            {
+                _runtime.Start();
+            }
+            catch (Exception exception)
+            {
+                SetRuntimeStatus(null, exception.Message);
+                return;
+            }
         }
         if (sync.Updated)
             SetRuntimeStatus("botSourceUpdated");

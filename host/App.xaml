@@ -4,13 +4,17 @@
              Startup="Application_Startup"
              Exit="Application_Exit">
   <Application.Resources>
-    <SolidColorBrush x:Key="WindowSurface" Color="#0C1018" />
-    <SolidColorBrush x:Key="PanelSurface" Color="#141B26" />
-    <SolidColorBrush x:Key="InputSurface" Color="#0F151E" />
+    <LinearGradientBrush x:Key="WindowSurface" StartPoint="0,0" EndPoint="1,1">
+      <GradientStop Color="#E61B2737" Offset="0" />
+      <GradientStop Color="#D90E1623" Offset="0.52" />
+      <GradientStop Color="#E6192332" Offset="1" />
+    </LinearGradientBrush>
+    <SolidColorBrush x:Key="PanelSurface" Color="#B82B3B4E" />
+    <SolidColorBrush x:Key="InputSurface" Color="#B8141D2A" />
     <SolidColorBrush x:Key="TextPrimary" Color="#F1F5FA" />
     <SolidColorBrush x:Key="Muted" Color="#9AA8B8" />
     <SolidColorBrush x:Key="Accent" Color="#82D8E8" />
-    <SolidColorBrush x:Key="Rule" Color="#2A3543" />
+    <SolidColorBrush x:Key="Rule" Color="#4DFFFFFF" />
     <Style TargetType="TextBlock">
       <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
     </Style>
@@ -30,7 +34,7 @@
       <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
     <Style x:Key="ToolButton" TargetType="Button">
-      <Setter Property="Background" Value="#1B2531" />
+      <Setter Property="Background" Value="#8C2A3B4D" />
       <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
       <Setter Property="BorderBrush" Value="{StaticResource Rule}" />
       <Setter Property="BorderThickness" Value="1" />
@@ -49,10 +53,10 @@
             <ControlTemplate.Triggers>
               <Trigger Property="IsMouseOver" Value="True">
                 <Setter TargetName="ButtonBorder" Property="BorderBrush" Value="{StaticResource Accent}" />
-                <Setter TargetName="ButtonBorder" Property="Background" Value="#243340" />
+                <Setter TargetName="ButtonBorder" Property="Background" Value="#B43C5A6C" />
               </Trigger>
               <Trigger Property="IsPressed" Value="True">
-                <Setter TargetName="ButtonBorder" Property="Background" Value="#304755" />
+                <Setter TargetName="ButtonBorder" Property="Background" Value="#D1507180" />
               </Trigger>
               <Trigger Property="IsEnabled" Value="False">
                 <Setter TargetName="ButtonBorder" Property="Opacity" Value="0.45" />
