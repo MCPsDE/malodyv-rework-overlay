@@ -5,14 +5,14 @@ window, and the original `nonebot_plugin_rework` directory vendored from
 `MCPsDE/nonebot-plugin-for-osumania4k`. The card is served directly from
 `nonebot_plugin_rework/tosu_plugin`; the legacy `Card` directory is not used.
 
-Current release: `1.3.8`.
+Current release: `1.3.11`.
 
 ## Build
 
-From Windows PowerShell with .NET 8 and .NET 6 SDKs installed:
+From PowerShell 7 (`pwsh`) with .NET 8 and .NET 6 SDKs installed:
 
 ```powershell
-.\Build-Release.ps1
+pwsh -NoProfile -File .\Build-Release.ps1
 ```
 
 The output is `release\MalodyVReworkOverlay`. Its plugin DLL is at the package

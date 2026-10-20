@@ -19,7 +19,7 @@ public sealed class Plugin : BasePlugin
 {
     public const string PluginGuid = "com.baka666.malodyv.reworkoverlay";
     public const string PluginName = "MalodyV Rework Overlay";
-    public const string PluginVersion = "1.3.8";
+    public const string PluginVersion = "1.3.11";
     internal const string UpdateManifestUrl =
         "https://raw.githubusercontent.com/MCPsDE/malodyv-rework-overlay/main/manifest.json";
     private const string RuntimeChartTypeName = "Malody.Chart.iqy";

@@ -4,7 +4,7 @@
         Title="MalodyV Rework Overlay" Icon="{StaticResource MainWindowIcon}" Width="520" MinWidth="460" MaxWidth="580"
         SizeToContent="Height" MaxHeight="700" WindowStartupLocation="CenterScreen"
         WindowStyle="None" AllowsTransparency="True" Background="Transparent"
-        FontFamily="Segoe UI" Foreground="{StaticResource TextPrimary}"
+        FontFamily="Microsoft YaHei UI" Foreground="{StaticResource TextPrimary}"
         TextOptions.TextFormattingMode="Ideal" TextOptions.TextRenderingMode="Grayscale"
         UseLayoutRounding="True" SnapsToDevicePixels="True"
         PreviewKeyDown="Window_PreviewKeyDown">
@@ -25,15 +25,16 @@
           <ColumnDefinition Width="Auto" />
         </Grid.ColumnDefinitions>
         <StackPanel VerticalAlignment="Center">
-          <TextBlock x:Name="WindowTitle" Text="MalodyV Rework Overlay" FontSize="21" FontWeight="Medium"
+          <TextBlock x:Name="WindowTitle" Text="MalodyV Rework Overlay" FontSize="21" FontWeight="SemiBold"
                      MouseLeftButtonDown="WindowHeader_MouseLeftButtonDown" />
           <TextBlock x:Name="WindowSubtitle" Margin="0,3,0,0" Text="Chart companion"
                      FontSize="12" Foreground="{StaticResource Muted}"
                      MouseLeftButtonDown="WindowHeader_MouseLeftButtonDown" />
-          <TextBlock x:Name="SponsorLinkText" Margin="0,4,0,0" FontSize="12" FontWeight="SemiBold">
-            <Hyperlink x:Name="SponsorHyperlink" NavigateUri="https://ifdian.net/a/mcpsde"
+          <TextBlock x:Name="SponsorLinkText" Margin="0,7,0,0" FontSize="14" FontWeight="SemiBold">
+            <Hyperlink x:Name="SponsorHyperlink"
                        Foreground="{StaticResource SponsorRainbow}"
-                       RequestNavigate="SponsorLink_RequestNavigate">赞助支持 MCpsDE</Hyperlink>
+                       TextDecorations="Underline"
+                       Click="SponsorLink_Click">赞助支持</Hyperlink>
           </TextBlock>
         </StackPanel>
         <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
@@ -99,7 +100,7 @@
                     TickFrequency="5" IsSnapToTickEnabled="False" VerticalAlignment="Center"
                     ValueChanged="OpacitySlider_ValueChanged" />
             <TextBlock x:Name="OpacityValue" Grid.Column="2" Text="95%" TextAlignment="Right"
-                       VerticalAlignment="Center" FontFamily="Consolas" />
+                       VerticalAlignment="Center" />
           </Grid>
         </StackPanel>
       </ScrollViewer>

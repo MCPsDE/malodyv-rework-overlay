@@ -5,7 +5,6 @@ using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
-using System.Windows.Navigation;
 
 namespace MalodyV.ReworkOverlay;
 
@@ -196,8 +195,8 @@ public partial class MainWindow : Window
         WindowSubtitle.Text = T("subtitle");
         SponsorHyperlink.Inlines.Clear();
         SponsorHyperlink.Inlines.Add(new Run(_settings.Language == "en"
-            ? "Support MCpsDE"
-            : "赞助支持 MCpsDE"));
+            ? "Support"
+            : "赞助支持"));
         LanguageButton.Content = _settings.Language == "en" ? "中文" : "EN";
         SelectedSectionTitle.Text = T("selected");
         OptionsTitle.Text = T("cardOptions");
@@ -523,21 +522,17 @@ public partial class MainWindow : Window
             DragMove();
     }
 
-    private void SponsorLink_RequestNavigate(object sender, RequestNavigateEventArgs e)
+    private void SponsorLink_Click(object sender, RoutedEventArgs e)
     {
-        if (e.Uri.Scheme == Uri.UriSchemeHttps &&
-            e.Uri.Host.Equals("ifdian.net", StringComparison.OrdinalIgnoreCase))
+        try
         {
-            try
-            {
-                Process.Start(new ProcessStartInfo(e.Uri.AbsoluteUri) { UseShellExecute = true });
-            }
-            catch (Exception exception)
-            {
-                SetRuntimeStatus(null, exception.Message);
-            }
+            var target = new UriBuilder(Uri.UriSchemeHttps, "ifdian.net") { Path = "/a/mcpsde" }.Uri;
+            Process.Start(new ProcessStartInfo(target.AbsoluteUri) { UseShellExecute = true });
         }
-        e.Handled = true;
+        catch (Exception exception)
+        {
+            SetRuntimeStatus(null, exception.Message);
+        }
     }
 
     private void MinimizeButton_Click(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
