@@ -26,6 +26,7 @@ public partial class OverlayWindow : Window
     private enum PointerOperation
     {
         None,
+        PendingDrag,
         Drag,
         Resize,
     }
@@ -183,14 +184,17 @@ public partial class OverlayWindow : Window
         if (_resizeEdges != ResizeEdges.None)
             _pointerOperation = PointerOperation.Resize;
         else if (_settings.DragEnabled)
-            _pointerOperation = PointerOperation.Drag;
+            _pointerOperation = PointerOperation.PendingDrag;
         else
             return;
 
         _resizeStartPointerScreen = PointToScreen(point);
         _resizeStartBounds = new Rect(Left, Top, ActualWidth, ActualHeight);
-        Mouse.Capture(this, CaptureMode.SubTree);
-        e.Handled = true;
+        if (_pointerOperation == PointerOperation.Resize)
+        {
+            Mouse.Capture(this, CaptureMode.SubTree);
+            e.Handled = true;
+        }
     }
 
     private void OverlayWindow_PreviewMouseMove(object sender, MouseEventArgs e)
@@ -208,10 +212,24 @@ public partial class OverlayWindow : Window
         var deltaX = (pointerScreen.X - _resizeStartPointerScreen.X) / dpi.DpiScaleX;
         var deltaY = (pointerScreen.Y - _resizeStartPointerScreen.Y) / dpi.DpiScaleY;
 
+        if (_pointerOperation == PointerOperation.PendingDrag)
+        {
+            if (Math.Abs(deltaX) < SystemParameters.MinimumHorizontalDragDistance &&
+                Math.Abs(deltaY) < SystemParameters.MinimumVerticalDragDistance)
+                return;
+
+            _pointerOperation = PointerOperation.Drag;
+            if (!Mouse.Capture(this, CaptureMode.SubTree))
+            {
+                _pointerOperation = PointerOperation.None;
+                return;
+            }
+        }
+
         if (_pointerOperation == PointerOperation.Drag)
         {
-            Left += deltaX;
-            Top += deltaY;
+            Left = _resizeStartBounds.Left + deltaX;
+            Top = _resizeStartBounds.Top + deltaY;
             UpdateStoredPosition();
         }
         else
@@ -263,6 +281,11 @@ public partial class OverlayWindow : Window
     {
         if (_pointerOperation == PointerOperation.None)
             return;
+        if (_pointerOperation == PointerOperation.PendingDrag)
+        {
+            _pointerOperation = PointerOperation.None;
+            return;
+        }
         _pointerOperation = PointerOperation.None;
         _resizeEdges = ResizeEdges.None;
         Mouse.Capture(null);

@@ -5,7 +5,7 @@ window, and the original `nonebot_plugin_rework` directory vendored from
 `MCPsDE/nonebot-plugin-for-osumania4k`. The card is served directly from
 `nonebot_plugin_rework/tosu_plugin`; the legacy `Card` directory is not used.
 
-Current release: `1.3.5`.
+Current release: `1.3.6`.
 
 ## Build
 
