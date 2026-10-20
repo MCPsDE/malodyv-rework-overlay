@@ -19,7 +19,7 @@ public sealed class Plugin : BasePlugin
 {
     public const string PluginGuid = "com.baka666.malodyv.reworkoverlay";
     public const string PluginName = "MalodyV Rework Overlay";
-    public const string PluginVersion = "1.3.7";
+    public const string PluginVersion = "1.3.8";
     internal const string UpdateManifestUrl =
         "https://raw.githubusercontent.com/MCPsDE/malodyv-rework-overlay/main/manifest.json";
     private const string RuntimeChartTypeName = "Malody.Chart.iqy";
@@ -46,6 +46,7 @@ public sealed class Plugin : BasePlugin
         TryPatch(() => FindMethod("Malody.Scene.Item.ItemChart", "SetSelected"), nameof(SelectionPatch.ChartItemChanged), "hall chart focus");
         TryPatch(() => FindMethod("Malody.Scene.Panel.PanelMod", "OnDisable"), nameof(SelectionPatch.ModSettingsChanged), "hall and room mod selection");
         TryPatch(() => FindMethod("Malody.Scene.Panel.PanelJudge", "OnDisable"), nameof(SelectionPatch.ModSettingsChanged), "Turbo settings");
+        TryPatch(() => FindMethod("Malody.UI.UISlider", "OnChange"), nameof(SelectionPatch.TurboSliderChanged), "Turbo music speed changes");
         TryPatch(() => FindMethod("Malody.Scene.SceneEditor", "Start"), nameof(SelectionPatch.EditorStarted), "editor initialization");
         TryPatch(() => FindMethod("Malody.Scene.SceneEditor", "OnDestroy"), nameof(SelectionPatch.EditorClosed), "editor exit");
         TryPatch(FindRoomConfigChangeMethod, nameof(SelectionPatch.ModSettingsChanged), "online room config sync");
@@ -54,6 +55,7 @@ public sealed class Plugin : BasePlugin
         TryPatch(() => FindMethod("Malody.Scene.SceneRoom", "OnBack"), nameof(SelectionPatch.SelectionCleared), "online room exit");
         TryPatch(() => FindMethod("Malody.Scene.SceneRoomWatch", "OnBack"), nameof(SelectionPatch.SelectionCleared), "room watch exit");
         TryPatch(() => FindMethod("Malody.Play.ChartPlayer", "Play"), nameof(SelectionPatch.GameplayStarted), "gameplay start");
+        TryPatch(() => FindMethod("Malody.Scene.ScenePlay", "OnDestroy"), nameof(SelectionPatch.GameplayEnded), "gameplay exit");
         TryPatch(() => FindMethod("Malody.Scene.SceneResult", "OnEnable"), nameof(SelectionPatch.ResultShown), "result screen");
         TryPatch(() => FindMethod("Malody.Scene.SceneLoader", "ToScene"), nameof(SelectionPatch.SceneChanged), "scene state changes");
         SelectionPipe.PublishCurrentChart();
@@ -376,6 +378,13 @@ internal static class SelectionPipe
     private static PropertyInfo? _randomSeedBackingProperty;
     private static PropertyInfo? _customJudgeSpeedProperty;
     private static FieldInfo? _customJudgeSpeedField;
+    private static PropertyInfo? _panelJudgeSceneInstanceProperty;
+    private static FieldInfo? _panelJudgeTurboField;
+    private static FieldInfo? _panelTurboSpeedField;
+    private static FieldInfo? _panelJudgeTurboToggleField;
+    private static PropertyInfo? _sliderCurrentProperty;
+    private static PropertyInfo? _toggleCurrentProperty;
+    private static bool _turboPanelMembersResolved;
     private static MethodInfo? _canPlayModMethod;
     private static bool _canPlayModResolved;
     private static int _turboMembersDiagnosticWritten;
@@ -454,7 +463,9 @@ internal static class SelectionPipe
         _playModeProperty = properties.FirstOrDefault(property =>
             string.Equals(property.PropertyType.FullName, "Malody.Play.PlayModeType", StringComparison.Ordinal));
         _playModeField = match.Type.GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)
-            .FirstOrDefault(field => string.Equals(field.FieldType.FullName, "Malody.Play.PlayModeType", StringComparison.Ordinal));
+            .FirstOrDefault(field => string.Equals(field.FieldType.FullName, "Malody.Play.PlayModeType", StringComparison.Ordinal))
+            ?? match.Type.GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)
+                .FirstOrDefault(field => string.Equals(field.Name, "rsk", StringComparison.Ordinal));
         _playSpeedProperty = properties.FirstOrDefault(property =>
             string.Equals(property.Name, "PlaySpeed", StringComparison.OrdinalIgnoreCase)
             && property.PropertyType == typeof(float));
@@ -477,17 +488,21 @@ internal static class SelectionPipe
             : GetMemberValueType(customJudgeMember);
         if (customJudgeType is not null)
         {
-            _customJudgeSpeedProperty = FindProperty(customJudgeType, "audioSpeed");
+            _customJudgeSpeedProperty = FindProperty(customJudgeType, "audioSpeed") ??
+                FindProperty(customJudgeType, "szr");
             _customJudgeSpeedField = customJudgeType
                 .GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)
-                .FirstOrDefault(field => string.Equals(field.Name, "audioSpeed", StringComparison.OrdinalIgnoreCase));
+                .FirstOrDefault(field => IsAudioSpeedName(field.Name) && IsNumericSpeedType(field.FieldType));
         }
+        ResolveTurboPanelMembers();
 
         Diagnostic($"Resolved PlayInfo state members: Mod={_modProperty?.Name ?? "<missing>"}, " +
             $"ModForPlay={_modForPlayProperty?.Name ?? "<missing>"}, " +
             $"PlayMode={_playModeProperty?.Name ?? _playModeField?.Name ?? "<missing>"}, " +
                 $"PlaySpeed={_playSpeedProperty?.Name ?? "<missing>"}, " +
-                $"Turbo={customJudgeMember?.Name ?? "<missing>"}, Seed={_randomSeedBackingProperty?.Name ?? "<missing>"}.");
+                $"Turbo={customJudgeMember?.Name ?? "<missing>"}, " +
+                $"TurboMusicSpeed={_customJudgeSpeedProperty?.Name ?? _customJudgeSpeedField?.Name ?? "<missing>"}, " +
+                $"Seed={_randomSeedBackingProperty?.Name ?? "<missing>"}.");
     }
 
     private static Type GetMemberValueType(MemberInfo member) => member switch
@@ -497,19 +512,120 @@ internal static class SelectionPipe
         _ => typeof(void),
     };
 
+    private static void ResolveTurboPanelMembers()
+    {
+        if (_turboPanelMembersResolved)
+            return;
+
+        _turboPanelMembersResolved = true;
+        try
+        {
+            var panelJudgeType = FindRuntimeType("Malody.Scene.Panel.PanelJudge");
+            var panelTurboType = FindRuntimeType("Malody.Scene.Panel.PanelTurbo");
+            var sliderType = FindRuntimeType("Malody.UI.UISlider");
+            var toggleType = FindRuntimeType("Malody.UI.UIToggle");
+            _panelJudgeSceneInstanceProperty = panelJudgeType.GetProperty("SceneInstance",
+                BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.FlattenHierarchy);
+            _panelJudgeTurboField = FindField(panelJudgeType, "panelTurbo");
+            _panelJudgeTurboToggleField = FindField(panelJudgeType, "turboToggle");
+            _panelTurboSpeedField = FindField(panelTurboType, "slideSpeed");
+            _sliderCurrentProperty = FindProperty(sliderType, "Current");
+            _toggleCurrentProperty = FindProperty(toggleType, "Current");
+        }
+        catch (Exception exception)
+        {
+            DiagnosticWarning($"Turbo live slider inspection is unavailable: {exception.Message}");
+        }
+    }
+
+    private static Type FindRuntimeType(string fullName) =>
+        AppDomain.CurrentDomain.GetAssemblies()
+            .SelectMany(GetLoadableTypes)
+            .FirstOrDefault(type => string.Equals(type.FullName, fullName, StringComparison.Ordinal))
+        ?? throw new TypeLoadException($"Could not find runtime type {fullName}.");
+
+    private static FieldInfo? FindField(Type type, string name) =>
+        type.GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)
+            .FirstOrDefault(field => string.Equals(field.Name, name, StringComparison.OrdinalIgnoreCase));
+
+    private static bool TryReadTurboPanel(out object? speedSlider, out bool enabled, out double speed)
+    {
+        ResolveTurboPanelMembers();
+        speedSlider = null;
+        enabled = false;
+        speed = double.NaN;
+        try
+        {
+            var panel = _panelJudgeSceneInstanceProperty?.GetValue(null);
+            if (panel is null || IsNullNativeObject(panel))
+                return false;
+            var turboPanel = _panelJudgeTurboField?.GetValue(panel);
+            speedSlider = turboPanel is null ? null : _panelTurboSpeedField?.GetValue(turboPanel);
+            enabled = _panelJudgeTurboToggleField?.GetValue(panel) is { } toggle &&
+                _toggleCurrentProperty?.GetValue(toggle) is true;
+            if (enabled && speedSlider is not null && !IsNullNativeObject(speedSlider))
+                speed = Convert.ToDouble(_sliderCurrentProperty?.GetValue(speedSlider),
+                    System.Globalization.CultureInfo.InvariantCulture);
+            return true;
+        }
+        catch
+        {
+            speedSlider = null;
+            enabled = false;
+            speed = double.NaN;
+            return false;
+        }
+    }
+
+    private static bool IsNullNativeObject(object value)
+    {
+        try
+        {
+            return FindProperty(value.GetType(), "Pointer")?.GetValue(value) is IntPtr pointer && pointer == IntPtr.Zero;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    public static bool IsTurboMusicSpeedSlider(object? slider)
+    {
+        if (slider is null || !TryReadTurboPanel(out var speedSlider, out _, out _ ) || speedSlider is null)
+            return false;
+        if (ReferenceEquals(slider, speedSlider))
+            return true;
+        try
+        {
+            return FindProperty(slider.GetType(), "Pointer")?.GetValue(slider) is IntPtr sliderPointer &&
+                sliderPointer != IntPtr.Zero &&
+                FindProperty(speedSlider.GetType(), "Pointer")?.GetValue(speedSlider) is IntPtr turboPointer &&
+                sliderPointer == turboPointer;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     private static bool IsCustomJudgeMemberType(Type type) =>
         type.FullName?.EndsWith(".CustomJudgeProfile", StringComparison.Ordinal) == true ||
-        string.Equals(type.Name, "CustomJudgeProfile", StringComparison.Ordinal);
+        string.Equals(type.Name, "CustomJudgeProfile", StringComparison.Ordinal) ||
+        string.Equals(type.FullName, "Malody.Play.blp", StringComparison.Ordinal);
+
+    private static bool IsAudioSpeedName(string name) =>
+        string.Equals(name, "audioSpeed", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "szr", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsNumericSpeedType(Type type) => type == typeof(float) || type == typeof(double);
 
     private static bool HasFloatAudioSpeedMember(Type type)
     {
         const BindingFlags flags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
         return type.GetProperties(flags).Any(property =>
-                   property.PropertyType == typeof(float) &&
-                   string.Equals(property.Name, "audioSpeed", StringComparison.OrdinalIgnoreCase)) ||
+                   IsNumericSpeedType(property.PropertyType) && IsAudioSpeedName(property.Name)) ||
                type.GetFields(flags).Any(field =>
-                   field.FieldType == typeof(float) &&
-                   string.Equals(field.Name, "audioSpeed", StringComparison.OrdinalIgnoreCase));
+                   IsNumericSpeedType(field.FieldType) && IsAudioSpeedName(field.Name));
     }
 
     private static IEnumerable<Type> GetLoadableTypes(Assembly assembly)
@@ -614,8 +730,15 @@ internal static class SelectionPipe
             var customJudge = TryGetPropertyValue(_customJudgeProperty, local)
                 ?? TryGetFieldValue(_customJudgeField, local)
                 ?? ReadMember(localType, local, "customJudge");
+            var turboPanelOpen = TryReadTurboPanel(out _, out var turboEnabled, out var liveTurboSpeed);
+            if (turboPanelOpen && !turboEnabled)
+                customJudge = null;
             double speed;
-            if (customJudge is not null)
+            if (turboPanelOpen && turboEnabled && double.IsFinite(liveTurboSpeed))
+            {
+                speed = liveTurboSpeed;
+            }
+            else if (customJudge is not null)
             {
                 speed = ReadCustomJudgeAudioSpeed(customJudge);
                 if (!double.IsFinite(speed) || speed < 0.5 || speed > 2.0)
@@ -632,7 +755,9 @@ internal static class SelectionPipe
             var randomSeed = TryGetPropertyValue(_randomSeedBackingProperty, local) ?? ReadMember(localType, local, "RandomSeed");
             return (mods, double.IsFinite(speed) && speed > 0 ? speed : 1d,
                 mode is null ? -1 : Convert.ToInt32(mode), randomSeed is null ? 0 : Convert.ToInt32(randomSeed),
-                BuildTurboSignature(customJudge), true);
+                turboPanelOpen && turboEnabled
+                    ? $"live-audioSpeed={liveTurboSpeed.ToString("0.#####", System.Globalization.CultureInfo.InvariantCulture)}"
+                    : BuildTurboSignature(customJudge), true);
         }
         catch (Exception exception)
         {
@@ -648,7 +773,8 @@ internal static class SelectionPipe
 
         var namedValue = TryGetPropertyValue(_customJudgeSpeedProperty, customJudge)
             ?? TryGetFieldValue(_customJudgeSpeedField, customJudge)
-            ?? ReadMember(customJudge.GetType(), customJudge, "audioSpeed");
+            ?? ReadMember(customJudge.GetType(), customJudge, "audioSpeed")
+            ?? ReadMember(customJudge.GetType(), customJudge, "szr");
         var speed = ReadDouble(namedValue, double.NaN);
         if (double.IsFinite(speed))
             return speed;
@@ -661,10 +787,10 @@ internal static class SelectionPipe
             var properties = type.GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)
                 .Where(property => property.GetMethod?.IsStatic != true)
                 .Select(property => $"property {property.Name}:{property.PropertyType.FullName}={FormatSignatureValue(TryGetPropertyValue(property, customJudge))}");
-            DiagnosticWarning($"Turbo profile audioSpeed was not readable on {type.FullName}; members=[{string.Join(", ", fields.Concat(properties))}].");
+            DiagnosticWarning($"Turbo music speed (audioSpeed/szr) was not readable on {type.FullName}; members=[{string.Join(", ", fields.Concat(properties))}].");
         }
 
-        DiagnosticWarning("Turbo profile audioSpeed was not readable; using neutral 1.0x analysis speed.");
+        DiagnosticWarning("Turbo music speed was not readable; using neutral 1.0x analysis speed.");
         return double.NaN;
     }
 
@@ -1180,6 +1306,8 @@ internal static class SelectionPatch
 
     public static void GameplayStarted() => SelectionPipe.PublishGameState(true);
 
+    public static void GameplayEnded() => SelectionPipe.PublishGameState(false);
+
     public static void ResultShown() => SelectionPipe.PublishGameState(false);
 
     public static void SceneChanged(object[] __args)
@@ -1195,6 +1323,12 @@ internal static class SelectionPatch
     }
 
     public static void ModSettingsChanged() => SelectionPipe.QueueCurrentChartRefresh();
+
+    public static void TurboSliderChanged(object __instance)
+    {
+        if (SelectionPipe.IsTurboMusicSpeedSlider(__instance))
+            SelectionPipe.QueueCurrentChartRefresh();
+    }
 
 }
 

@@ -72,7 +72,7 @@ internal sealed class OverlaySettings
     public double Left { get; set; } = 40;
     public double Top { get; set; } = 80;
     public double Width { get; set; } = 515;
-    public double Height { get; set; } = 610;
+    public double Height { get; set; } = 700;
     public string ToggleHotkey { get; set; } = "Ctrl+Shift+F8";
     public string Language { get; set; } = "zh-CN";
     public bool UpdateCheckEnabled { get; set; } = true;

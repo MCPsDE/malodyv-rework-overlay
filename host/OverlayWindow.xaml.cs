@@ -13,7 +13,7 @@ public partial class OverlayWindow : Window
     private const long WsExTransparent = 0x20;
     private const long WsExLayered = 0x80000;
     private const double ResizeBorderSize = 12;
-    private const double CardAspectRatio = 515d / 610d;
+    private const double CardAspectRatio = 515d / 700d;
     private const double MaximumCardWidth = 1400;
     private readonly OverlayRuntime _runtime;
     private readonly OverlaySettings _settings;
@@ -51,21 +51,28 @@ public partial class OverlayWindow : Window
                     html, body { width:100% !important; height:100% !important; overflow:hidden !important; }
                     .dashboard { position:absolute !important; left:0 !important; top:0 !important;
                         width:515px !important; min-width:515px !important; max-width:515px !important;
-                        height:610px !important; min-height:610px !important; max-height:610px !important;
+                        height:700px !important; min-height:700px !important; max-height:700px !important;
                         margin:0 !important; align-content:stretch !important;
                         grid-template-rows:minmax(0,1fr) !important; gap:0 !important;
                         transform:scale(var(--overlay-scale, 1)) !important;
                         transform-origin:top left !important; }
                     .main-card { width:100% !important; height:100% !important; min-height:0 !important;
                         max-height:none !important; overflow:auto !important; scrollbar-width:thin;
-                        scrollbar-color:rgba(132,215,232,.42) transparent; }
+                        scrollbar-color:rgba(132,215,232,.62) transparent; overscroll-behavior:contain; }
+                    .main-card.bars-pattern { grid-template-rows:auto auto auto minmax(0,1fr) !important;
+                        grid-auto-rows:auto !important; align-content:stretch !important; height:100% !important;
+                        min-height:0 !important; max-height:100% !important; overflow:hidden !important; }
+                    .main-card.bars-pattern #pattern-clusters.cluster-bars { grid-row:4; height:auto !important;
+                        min-height:0 !important; max-height:none !important; overflow-y:auto !important;
+                        overscroll-behavior:contain; scrollbar-width:thin;
+                        scrollbar-color:rgba(132,215,232,.62) transparent; }
                     body { padding:0 !important; user-select:none !important; -webkit-user-select:none !important; }
                     .main-card, .card.main-card { border:0 !important; outline:0 !important; box-shadow:none !important; }
                     .main-card::after { border:0 !important; box-shadow:none !important; }
                 `;
                 document.head.appendChild(style);
                 const updateScale = () => {
-                    const scale = Math.min(window.innerWidth / 515, window.innerHeight / 610);
+                    const scale = Math.min(window.innerWidth / 515, window.innerHeight / 700);
                     document.documentElement.style.setProperty('--overlay-scale', String(scale));
                 };
                 window.addEventListener('resize', updateScale, { passive:true });

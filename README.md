@@ -5,7 +5,7 @@ window, and the original `nonebot_plugin_rework` directory vendored from
 `MCPsDE/nonebot-plugin-for-osumania4k`. The card is served directly from
 `nonebot_plugin_rework/tosu_plugin`; the legacy `Card` directory is not used.
 
-Current release: `1.3.7`.
+Current release: `1.3.8`.
 
 ## Build
 
@@ -39,8 +39,10 @@ random seed from both the song-selection screen and online-room configuration,
 filtering unavailable mods through MalodyV's own mode rules.
 Refresh callbacks are coalesced with one-shot timers and marshalled through
 Unity's captured synchronization context. The game state is never polled each
-frame or on an interval. Turbo speed comes from
-`CustomJudgeProfile.audioSpeed`, not Catch scroll speed. The editor hook targets
+frame or on an interval. Turbo music speed comes from the game's `audioSpeed`
+field (`szr` in the current IL2CPP runtime), never Catch scroll speed (`oef`).
+Gameplay visibility is restored when `ScenePlay` is destroyed, including
+canceled plays. The editor hook targets
 the loaded `CommandManager.JustDoIt(CommandBase, bool)` method and refreshes only
 for note commands.
 The selected rate and chart-changing Key mods are applied before the card

@@ -11,10 +11,27 @@
     </LinearGradientBrush>
     <SolidColorBrush x:Key="PanelSurface" Color="#B82B3B4E" />
     <SolidColorBrush x:Key="InputSurface" Color="#B8141D2A" />
-    <SolidColorBrush x:Key="TextPrimary" Color="#F3F7FB" />
+    <SolidColorBrush x:Key="TextPrimary" Color="#E8EEF2" />
     <SolidColorBrush x:Key="Muted" Color="#C0D9DF" />
     <SolidColorBrush x:Key="Accent" Color="#82D8E8" />
     <SolidColorBrush x:Key="Rule" Color="#4DFFFFFF" />
+    <LinearGradientBrush x:Key="SponsorRainbow" StartPoint="0,0" EndPoint="1,0">
+      <GradientStop Color="#FF91B9" Offset="0" />
+      <GradientStop Color="#FFD37A" Offset="0.36" />
+      <GradientStop Color="#8BE6CF" Offset="0.68" />
+      <GradientStop Color="#88DDF4" Offset="1" />
+    </LinearGradientBrush>
+    <DrawingImage x:Key="MainWindowIcon">
+      <DrawingImage.Drawing>
+        <DrawingGroup>
+          <GeometryDrawing Brush="#1B303A"
+                           Geometry="M 14,4 H 50 C 55.523,4 60,8.477 60,14 V 50 C 60,55.523 55.523,60 50,60 H 14 C 8.477,60 4,55.523 4,50 V 14 C 4,8.477 8.477,4 14,4 Z" />
+          <GeometryDrawing Brush="#78D9E7"
+                           Geometry="M 14,35 H 22 V 49 H 14 Z M 28,26 H 36 V 49 H 28 Z M 42,17 H 50 V 49 H 42 Z" />
+          <GeometryDrawing Brush="#FFB98B" Geometry="M 14,52 H 50 V 55 H 14 Z" />
+        </DrawingGroup>
+      </DrawingImage.Drawing>
+    </DrawingImage>
     <Style TargetType="TextBlock">
       <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
       <Setter Property="FontFamily" Value="Segoe UI" />

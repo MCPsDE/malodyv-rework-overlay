@@ -7,9 +7,9 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>MalodyV.ReworkOverlay</AssemblyName>
     <RootNamespace>MalodyV.ReworkOverlay</RootNamespace>
-    <Version>1.3.7</Version>
-    <AssemblyVersion>1.3.7.0</AssemblyVersion>
-    <FileVersion>1.3.7.0</FileVersion>
+    <Version>1.3.8</Version>
+    <AssemblyVersion>1.3.8.0</AssemblyVersion>
+    <FileVersion>1.3.8.0</FileVersion>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.3856.49" />
