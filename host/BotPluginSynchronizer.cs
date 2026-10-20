@@ -150,7 +150,8 @@ internal static class BotPluginSynchronizer
         foreach (var file in Directory.EnumerateFiles(directory, "*", SearchOption.AllDirectories)
                      .Where(path => !path.Split(Path.DirectorySeparatorChar).Contains("__pycache__")
                          && !path.EndsWith(".pyc", StringComparison.OrdinalIgnoreCase))
-                     .OrderBy(path => Path.GetRelativePath(directory, path), StringComparer.Ordinal))
+                     .OrderBy(path => Path.GetRelativePath(directory, path)
+                         .Replace(Path.DirectorySeparatorChar, '/'), StringComparer.Ordinal))
         {
             var relative = Path.GetRelativePath(directory, file).Replace(Path.DirectorySeparatorChar, '/');
             hash.AppendData(Encoding.UTF8.GetBytes(relative));
