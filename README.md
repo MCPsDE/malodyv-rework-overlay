@@ -5,6 +5,8 @@ window, and the original `nonebot_plugin_rework` directory vendored from
 `MCPsDE/nonebot-plugin-for-osumania4k`. The card is served directly from
 `nonebot_plugin_rework/tosu_plugin`; the legacy `Card` directory is not used.
 
+Current release: `1.3.5`.
+
 ## Build
 
 From Windows PowerShell with .NET 8 and .NET 6 SDKs installed:
@@ -35,6 +37,12 @@ and hide-during-play behavior.
 The plugin reads `PlayInfo.Local` mod flags, Turbo audio speed, play mode, and
 random seed from both the song-selection screen and online-room configuration,
 filtering unavailable mods through MalodyV's own mode rules.
+Refresh callbacks are coalesced with one-shot timers and marshalled through
+Unity's captured synchronization context. The game state is never polled each
+frame or on an interval. Turbo speed comes from
+`CustomJudgeProfile.audioSpeed`, not Catch scroll speed. The editor hook targets
+the loaded `CommandManager.JustDoIt(CommandBase, bool)` method and refreshes only
+for note commands.
 The selected rate and chart-changing Key mods are applied before the card
 analysis: lane mappings, Less filtering, Thumb reduction, Taps conversion, and
 Holds conversion. Changes to the active mod signature invalidate the card's

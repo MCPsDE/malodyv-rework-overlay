@@ -4,7 +4,10 @@
         Title="MalodyV Rework Overlay" Width="520" MinWidth="460" MaxWidth="580"
         SizeToContent="Height" MaxHeight="700" WindowStartupLocation="CenterScreen"
         WindowStyle="None" AllowsTransparency="True" Background="Transparent"
-        Foreground="{StaticResource TextPrimary}" PreviewKeyDown="Window_PreviewKeyDown">
+        FontFamily="Segoe UI" Foreground="{StaticResource TextPrimary}"
+        TextOptions.TextFormattingMode="Display" TextOptions.TextRenderingMode="Grayscale"
+        UseLayoutRounding="True" SnapsToDevicePixels="True"
+        PreviewKeyDown="Window_PreviewKeyDown">
   <Border Margin="10" Background="{StaticResource WindowSurface}"
           BorderBrush="#668DE6F5" BorderThickness="1" CornerRadius="16">
     <Border.Effect>
@@ -24,7 +27,7 @@
         <StackPanel VerticalAlignment="Center" MouseLeftButtonDown="WindowHeader_MouseLeftButtonDown">
           <TextBlock x:Name="WindowTitle" Text="MalodyV Rework Overlay" FontSize="21" FontWeight="SemiBold" />
           <TextBlock x:Name="WindowSubtitle" Margin="0,3,0,0" Text="Chart companion"
-                     FontSize="11" Foreground="{StaticResource Muted}" />
+                     FontSize="12" Foreground="{StaticResource Muted}" />
         </StackPanel>
         <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
           <Border Padding="10,6" Margin="0,0,10,0" Background="{StaticResource PanelSurface}"
@@ -32,7 +35,7 @@
             <StackPanel Orientation="Horizontal">
               <Ellipse x:Name="ConnectionDot" Width="7" Height="7" Margin="0,0,7,0"
                        Fill="{StaticResource Muted}" VerticalAlignment="Center" />
-              <TextBlock x:Name="ConnectionState" Text="等待游戏连接" FontSize="11"
+              <TextBlock x:Name="ConnectionState" Text="等待游戏连接" FontSize="12"
                          Foreground="{StaticResource Muted}" VerticalAlignment="Center" />
             </StackPanel>
           </Border>
@@ -50,7 +53,7 @@
                      Foreground="{StaticResource Accent}" FontWeight="SemiBold" />
           <TextBlock x:Name="SelectedMap" Margin="0,7,0,0" Text="尚未选择谱面"
                      FontSize="18" FontWeight="SemiBold" TextWrapping="Wrap" />
-          <TextBlock x:Name="SelectedPath" Margin="0,5,0,0" FontSize="11"
+          <TextBlock x:Name="SelectedPath" Margin="0,5,0,0" FontSize="12"
                      Foreground="{StaticResource Muted}" TextWrapping="Wrap" />
           <Separator Margin="0,18,0,18" Background="{StaticResource Rule}" />
           <TextBlock x:Name="OptionsTitle" Text="卡片显示" FontSize="15" FontWeight="SemiBold" />

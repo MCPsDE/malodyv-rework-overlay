@@ -1,7 +1,6 @@
 using BepInEx;
 using BepInEx.Unity.IL2CPP;
 using HarmonyLib;
-using Il2CppInterop.Runtime.Injection;
 using System.Collections;
 using System.Diagnostics;
 using System.IO.Pipes;
@@ -12,7 +11,6 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Channels;
-using UnityEngine;
 
 namespace MalodyV.ReworkOverlay.Plugin;
 
@@ -21,7 +19,7 @@ public sealed class Plugin : BasePlugin
 {
     public const string PluginGuid = "com.baka666.malodyv.reworkoverlay";
     public const string PluginName = "MalodyV Rework Overlay";
-    public const string PluginVersion = "1.3.4";
+    public const string PluginVersion = "1.3.5";
     internal const string UpdateManifestUrl =
         "https://raw.githubusercontent.com/MCPsDE/malodyv-rework-overlay/main/manifest.json";
     private const string RuntimeChartTypeName = "Malody.Chart.iqy";
@@ -31,14 +29,7 @@ public sealed class Plugin : BasePlugin
 
     public override void Load()
     {
-        try
-        {
-            RefreshScheduler.Initialize();
-        }
-        catch (Exception exception)
-        {
-            Log.LogError($"Failed to initialize event-driven refresh scheduling: {exception}");
-        }
+        RefreshScheduler.Initialize();
         try
         {
             StartCompanion();
@@ -130,17 +121,23 @@ public sealed class Plugin : BasePlugin
     {
         try
         {
-            var method = commandManager.GetType().GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)
-                .FirstOrDefault(candidate =>
-                {
-                    var parameters = candidate.GetParameters();
-                    return candidate.Name == "JustDoIt" && candidate.ReturnType == typeof(void) &&
-                        parameters.Length == 2 && parameters[1].ParameterType == typeof(bool);
-                }) ?? throw new MissingMethodException("Could not find the editor command dispatcher.");
+            var managerType = FindLoadedType("Malody.Edit.Command.CommandManager");
+            var commandType = FindLoadedType("Malody.Edit.Command.CommandBase");
+            var method = managerType.GetMethod(
+                "JustDoIt",
+                BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance,
+                binder: null,
+                new[] { commandType, typeof(bool) },
+                modifiers: null)
+                ?? throw new MissingMethodException(
+                    managerType.FullName,
+                    "JustDoIt(CommandBase, Boolean)");
             if (!EditorCommandHooks.Add(method))
                 return;
             _harmony!.Patch(method, postfix: new HarmonyMethod(typeof(SelectionPatch), nameof(SelectionPatch.EditorNoteChanged)));
-            SelectionPipe.Diagnostic($"Patched editor note changes: {method.DeclaringType?.FullName}.{method.Name}.");
+            SelectionPipe.Diagnostic(
+                $"Patched editor note changes: {method.DeclaringType?.FullName}.{method.Name}; " +
+                $"manager instance={commandManager.GetType().FullName}.");
         }
         catch (Exception exception)
         {
@@ -374,6 +371,7 @@ internal static class SelectionPipe
     private static PropertyInfo? _playModeProperty;
     private static FieldInfo? _playModeField;
     private static PropertyInfo? _customJudgeProperty;
+    private static FieldInfo? _customJudgeField;
     private static PropertyInfo? _playSpeedProperty;
     private static PropertyInfo? _randomSeedBackingProperty;
     private static PropertyInfo? _customJudgeSpeedProperty;
@@ -460,14 +458,27 @@ internal static class SelectionPipe
         _playSpeedProperty = properties.FirstOrDefault(property =>
             string.Equals(property.Name, "PlaySpeed", StringComparison.OrdinalIgnoreCase)
             && property.PropertyType == typeof(float));
-        _customJudgeProperty = properties.FirstOrDefault(property => HasMember(property.PropertyType, "audioSpeed"))
-            ?? properties.FirstOrDefault(property => IsCustomJudgeType(property.PropertyType));
+        var fields = match.Type.GetFields(BindingFlags.Public | BindingFlags.NonPublic |
+            BindingFlags.Instance | BindingFlags.Static);
+        var customJudgeMembers = properties.Cast<MemberInfo>().Concat(fields).ToArray();
+        var customJudgeMember = customJudgeMembers.FirstOrDefault(member =>
+                IsCustomJudgeMemberType(GetMemberValueType(member)))
+            ?? customJudgeMembers.FirstOrDefault(member =>
+                string.Equals(member.Name, "customJudge", StringComparison.OrdinalIgnoreCase))
+            ?? customJudgeMembers.FirstOrDefault(member =>
+                GetMemberValueType(member) != _runtimeChartType &&
+                HasFloatAudioSpeedMember(GetMemberValueType(member)));
+        _customJudgeProperty = customJudgeMember as PropertyInfo;
+        _customJudgeField = customJudgeMember as FieldInfo;
         _randomSeedBackingProperty = properties.FirstOrDefault(property =>
             property.PropertyType == typeof(int) && property.Name.Contains("BackingField", StringComparison.Ordinal));
-        if (_customJudgeProperty is not null)
+        var customJudgeType = customJudgeMember is null
+            ? null
+            : GetMemberValueType(customJudgeMember);
+        if (customJudgeType is not null)
         {
-            _customJudgeSpeedProperty = FindProperty(_customJudgeProperty.PropertyType, "audioSpeed");
-            _customJudgeSpeedField = _customJudgeProperty.PropertyType
+            _customJudgeSpeedProperty = FindProperty(customJudgeType, "audioSpeed");
+            _customJudgeSpeedField = customJudgeType
                 .GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)
                 .FirstOrDefault(field => string.Equals(field.Name, "audioSpeed", StringComparison.OrdinalIgnoreCase));
         }
@@ -476,23 +487,29 @@ internal static class SelectionPipe
             $"ModForPlay={_modForPlayProperty?.Name ?? "<missing>"}, " +
             $"PlayMode={_playModeProperty?.Name ?? _playModeField?.Name ?? "<missing>"}, " +
                 $"PlaySpeed={_playSpeedProperty?.Name ?? "<missing>"}, " +
-                $"Turbo={_customJudgeProperty?.Name ?? "<missing>"}, Seed={_randomSeedBackingProperty?.Name ?? "<missing>"}.");
+                $"Turbo={customJudgeMember?.Name ?? "<missing>"}, Seed={_randomSeedBackingProperty?.Name ?? "<missing>"}.");
     }
 
-    private static bool IsCustomJudgeType(Type type)
+    private static Type GetMemberValueType(MemberInfo member) => member switch
     {
-        try
-        {
-            var properties = type.GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
-            var fields = type.GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
-            return properties.Count(property => property.PropertyType == typeof(float)) >= 2 &&
-                properties.Count(property => property.PropertyType == typeof(bool)) >= 4 ||
-                fields.Any(field => string.Equals(field.Name, "audioSpeed", StringComparison.OrdinalIgnoreCase));
-        }
-        catch
-        {
-            return false;
-        }
+        PropertyInfo property => property.PropertyType,
+        FieldInfo field => field.FieldType,
+        _ => typeof(void),
+    };
+
+    private static bool IsCustomJudgeMemberType(Type type) =>
+        type.FullName?.EndsWith(".CustomJudgeProfile", StringComparison.Ordinal) == true ||
+        string.Equals(type.Name, "CustomJudgeProfile", StringComparison.Ordinal);
+
+    private static bool HasFloatAudioSpeedMember(Type type)
+    {
+        const BindingFlags flags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
+        return type.GetProperties(flags).Any(property =>
+                   property.PropertyType == typeof(float) &&
+                   string.Equals(property.Name, "audioSpeed", StringComparison.OrdinalIgnoreCase)) ||
+               type.GetFields(flags).Any(field =>
+                   field.FieldType == typeof(float) &&
+                   string.Equals(field.Name, "audioSpeed", StringComparison.OrdinalIgnoreCase));
     }
 
     private static IEnumerable<Type> GetLoadableTypes(Assembly assembly)
@@ -594,7 +611,9 @@ internal static class SelectionPipe
             var mode = TryGetPropertyValue(_playModeProperty, local) ?? TryGetFieldValue(_playModeField, local) ??
                 ReadMember(localType, local, "playMode");
             mods = FilterPlayableMods(mods, rawMods?.GetType(), mode);
-            var customJudge = TryGetPropertyValue(_customJudgeProperty, local) ?? ReadMember(localType, local, "customJudge");
+            var customJudge = TryGetPropertyValue(_customJudgeProperty, local)
+                ?? TryGetFieldValue(_customJudgeField, local)
+                ?? ReadMember(localType, local, "customJudge");
             double speed;
             if (customJudge is not null)
             {
@@ -774,12 +793,6 @@ internal static class SelectionPipe
         }
     }
 
-    private static bool HasMember(Type type, string name) =>
-        type.GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)
-            .Any(property => string.Equals(property.Name, name, StringComparison.OrdinalIgnoreCase)) ||
-        type.GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)
-            .Any(field => string.Equals(field.Name, name, StringComparison.OrdinalIgnoreCase));
-
     private static double ReadDouble(object? value, double fallback) =>
         value is null ? fallback : Convert.ToDouble(value, System.Globalization.CultureInfo.InvariantCulture);
 
@@ -875,7 +888,12 @@ internal static class SelectionPatch
         }
 
         _editorChartManager = manager;
-        Plugin.InstallEditorCommandHook(InvokeNoArgs(__instance, "GetCommandManager") ?? manager);
+        var commandManager = InvokeNoArgs(__instance, "GetCommandManager")
+            ?? ReadMember(__instance, "commandManager");
+        if (commandManager is null)
+            SelectionPipe.DiagnosticWarning("SceneEditor did not expose its CommandManager; note-change updates are unavailable.");
+        else
+            Plugin.InstallEditorCommandHook(commandManager);
         var chart = InvokeNoArgs(manager, "GetChart");
         if (chart is null)
         {
@@ -1180,39 +1198,94 @@ internal static class SelectionPatch
 
 }
 
-internal sealed class RefreshScheduler : MonoBehaviour
+internal static class RefreshScheduler
 {
-    private static RefreshScheduler? _instance;
-
-    public RefreshScheduler(IntPtr pointer) : base(pointer) { }
+    private static readonly object Gate = new();
+    private static readonly Timer ChartTimer = new(DispatchChartRefresh, null, Timeout.Infinite, Timeout.Infinite);
+    private static readonly Timer EditorTimer = new(DispatchEditorRefresh, null, Timeout.Infinite, Timeout.Infinite);
+    private static SynchronizationContext? _unityContext;
+    private static int _chartGeneration;
+    private static int _editorGeneration;
 
     public static void Initialize()
     {
-        if (_instance is not null)
-            return;
-        ClassInjector.RegisterTypeInIl2Cpp<RefreshScheduler>();
-        var gameObject = new GameObject("MalodyVReworkOverlay.RefreshScheduler");
-        UnityEngine.Object.DontDestroyOnLoad(gameObject);
-        _instance = gameObject.AddComponent<RefreshScheduler>();
+        lock (Gate)
+            _unityContext = SynchronizationContext.Current;
     }
 
     public static void ScheduleChartRefresh()
     {
-        if (_instance is null)
-            return;
-        _instance.CancelInvoke(nameof(FlushChartRefresh));
-        _instance.Invoke(nameof(FlushChartRefresh), 0.15f);
+        Schedule(ChartTimer, editor: false, 0.15f);
     }
 
     public static void ScheduleEditorRefresh(float delay = 0.25f)
     {
-        if (_instance is null)
-            return;
-        _instance.CancelInvoke(nameof(FlushEditorRefresh));
-        _instance.Invoke(nameof(FlushEditorRefresh), delay);
+        Schedule(EditorTimer, editor: true, delay);
     }
 
-    private void FlushChartRefresh() => SelectionPipe.PublishCurrentChart();
+    private static void Schedule(Timer timer, bool editor, float delay)
+    {
+        SynchronizationContext? context;
+        lock (Gate)
+        {
+            _unityContext ??= SynchronizationContext.Current;
+            context = _unityContext;
+            if (editor)
+                _editorGeneration++;
+            else
+                _chartGeneration++;
+        }
 
-    private void FlushEditorRefresh() => SelectionPatch.PublishEditorChart();
+        if (context is null)
+        {
+            SelectionPipe.DiagnosticWarning(
+                "Unity synchronization context is unavailable; refreshing on the Harmony callback thread.");
+            if (editor)
+                SelectionPatch.PublishEditorChart();
+            else
+                SelectionPipe.PublishCurrentChart();
+            return;
+        }
+
+        timer.Change(TimeSpan.FromSeconds(Math.Clamp(delay, 0.05f, 2f)), Timeout.InfiniteTimeSpan);
+    }
+
+    private static void DispatchChartRefresh(object? state) => Dispatch(editor: false);
+
+    private static void DispatchEditorRefresh(object? state) => Dispatch(editor: true);
+
+    private static void Dispatch(bool editor)
+    {
+        SynchronizationContext? context;
+        int generation;
+        lock (Gate)
+        {
+            context = _unityContext;
+            generation = editor ? _editorGeneration : _chartGeneration;
+        }
+
+        if (context is null)
+            return;
+
+        try
+        {
+            context.Post(_ =>
+            {
+                lock (Gate)
+                {
+                    if (generation != (editor ? _editorGeneration : _chartGeneration))
+                        return;
+                }
+
+                if (editor)
+                    SelectionPatch.PublishEditorChart();
+                else
+                    SelectionPipe.PublishCurrentChart();
+            }, null);
+        }
+        catch (Exception exception)
+        {
+            SelectionPipe.DiagnosticWarning($"Unable to return a refresh event to Unity's main thread: {exception.Message}");
+        }
+    }
 }

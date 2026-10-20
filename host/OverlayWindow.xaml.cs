@@ -13,12 +13,15 @@ public partial class OverlayWindow : Window
     private const long WsExTransparent = 0x20;
     private const long WsExLayered = 0x80000;
     private const double ResizeBorderSize = 12;
+    private const double CardAspectRatio = 515d / 610d;
+    private const double MaximumCardWidth = 1400;
     private readonly OverlayRuntime _runtime;
     private readonly OverlaySettings _settings;
     private bool _browserReady;
     private PointerOperation _pointerOperation;
     private ResizeEdges _resizeEdges;
-    private Point _lastPointerScreen;
+    private Point _resizeStartPointerScreen;
+    private Rect _resizeStartBounds;
 
     private enum PointerOperation
     {
@@ -44,9 +47,14 @@ public partial class OverlayWindow : Window
                 const style = document.createElement('style');
                 style.id = 'overlay-layout-style';
                 style.textContent = `
-                    .dashboard { width:100% !important; min-width:0 !important; max-width:none !important;
-                        height:100% !important; min-height:0 !important; align-content:stretch !important;
-                        grid-template-rows:minmax(0,1fr) !important; gap:0 !important; }
+                    html, body { width:100% !important; height:100% !important; overflow:hidden !important; }
+                    .dashboard { position:absolute !important; left:0 !important; top:0 !important;
+                        width:515px !important; min-width:515px !important; max-width:515px !important;
+                        height:610px !important; min-height:610px !important; max-height:610px !important;
+                        margin:0 !important; align-content:stretch !important;
+                        grid-template-rows:minmax(0,1fr) !important; gap:0 !important;
+                        transform:scale(var(--overlay-scale, 1)) !important;
+                        transform-origin:top left !important; }
                     .main-card { width:100% !important; height:100% !important; min-height:0 !important;
                         max-height:none !important; overflow:auto !important; scrollbar-width:thin;
                         scrollbar-color:rgba(132,215,232,.42) transparent; }
@@ -55,6 +63,12 @@ public partial class OverlayWindow : Window
                     .main-card::after { border:0 !important; box-shadow:none !important; }
                 `;
                 document.head.appendChild(style);
+                const updateScale = () => {
+                    const scale = Math.min(window.innerWidth / 515, window.innerHeight / 610);
+                    document.documentElement.style.setProperty('--overlay-scale', String(scale));
+                };
+                window.addEventListener('resize', updateScale, { passive:true });
+                updateScale();
             };
             if (document.readyState === 'loading')
                 document.addEventListener('DOMContentLoaded', install, { once:true });
@@ -108,8 +122,10 @@ public partial class OverlayWindow : Window
         {
             Left = _settings.Left;
             Top = _settings.Top;
-            Width = Math.Max(MinWidth, _settings.Width);
-            Height = Math.Max(MinHeight, _settings.Height);
+            Width = Math.Clamp(_settings.Width, MinWidth, MaximumCardWidth);
+            Height = Width / CardAspectRatio;
+            _settings.Width = Width;
+            _settings.Height = Height;
         }
         Opacity = 1;
         Topmost = _settings.AlwaysOnTop;
@@ -171,7 +187,8 @@ public partial class OverlayWindow : Window
         else
             return;
 
-        _lastPointerScreen = PointToScreen(point);
+        _resizeStartPointerScreen = PointToScreen(point);
+        _resizeStartBounds = new Rect(Left, Top, ActualWidth, ActualHeight);
         Mouse.Capture(this, CaptureMode.SubTree);
         e.Handled = true;
     }
@@ -188,9 +205,8 @@ public partial class OverlayWindow : Window
 
         var pointerScreen = PointToScreen(e.GetPosition(this));
         var dpi = VisualTreeHelper.GetDpi(this);
-        var deltaX = (pointerScreen.X - _lastPointerScreen.X) / dpi.DpiScaleX;
-        var deltaY = (pointerScreen.Y - _lastPointerScreen.Y) / dpi.DpiScaleY;
-        _lastPointerScreen = pointerScreen;
+        var deltaX = (pointerScreen.X - _resizeStartPointerScreen.X) / dpi.DpiScaleX;
+        var deltaY = (pointerScreen.Y - _resizeStartPointerScreen.Y) / dpi.DpiScaleY;
 
         if (_pointerOperation == PointerOperation.Drag)
         {
@@ -200,36 +216,47 @@ public partial class OverlayWindow : Window
         }
         else
         {
-            var width = Width;
-            var height = Height;
-            var left = Left;
-            var top = Top;
-            if (_resizeEdges.HasFlag(ResizeEdges.Left))
-            {
-                var nextWidth = Math.Clamp(width - deltaX, MinWidth, 1600);
-                left += width - nextWidth;
-                width = nextWidth;
-            }
-            if (_resizeEdges.HasFlag(ResizeEdges.Right))
-                width = Math.Clamp(width + deltaX, MinWidth, 1600);
-            if (_resizeEdges.HasFlag(ResizeEdges.Top))
-            {
-                var nextHeight = Math.Clamp(height - deltaY, MinHeight, 1600);
-                top += height - nextHeight;
-                height = nextHeight;
-            }
-            if (_resizeEdges.HasFlag(ResizeEdges.Bottom))
-                height = Math.Clamp(height + deltaY, MinHeight, 1600);
-            Left = left;
-            Top = top;
-            Width = width;
-            Height = height;
+            ResizeProportionally(deltaX, deltaY);
             _settings.Width = Width;
             _settings.Height = Height;
             UpdateStoredPosition();
         }
 
         e.Handled = true;
+    }
+
+    private void ResizeProportionally(double deltaX, double deltaY)
+    {
+        var hasHorizontalEdge = _resizeEdges.HasFlag(ResizeEdges.Left) ||
+                                _resizeEdges.HasFlag(ResizeEdges.Right);
+        var hasVerticalEdge = _resizeEdges.HasFlag(ResizeEdges.Top) ||
+                              _resizeEdges.HasFlag(ResizeEdges.Bottom);
+        var widthChange = _resizeEdges.HasFlag(ResizeEdges.Left) ? -deltaX : deltaX;
+        var heightChange = _resizeEdges.HasFlag(ResizeEdges.Top) ? -deltaY : deltaY;
+        var widthFactor = 1 + widthChange / _resizeStartBounds.Width;
+        var heightFactor = 1 + heightChange / _resizeStartBounds.Height;
+        var factor = hasHorizontalEdge && hasVerticalEdge
+            ? Math.Abs(widthFactor - 1) >= Math.Abs(heightFactor - 1) ? widthFactor : heightFactor
+            : hasHorizontalEdge ? widthFactor : heightFactor;
+        var width = Math.Clamp(_resizeStartBounds.Width * Math.Max(0.05, factor), MinWidth, MaximumCardWidth);
+        var height = width / CardAspectRatio;
+
+        if (_resizeEdges.HasFlag(ResizeEdges.Left))
+            Left = _resizeStartBounds.Right - width;
+        else if (!hasHorizontalEdge)
+            Left = _resizeStartBounds.Left + (_resizeStartBounds.Width - width) / 2;
+        else
+            Left = _resizeStartBounds.Left;
+
+        if (_resizeEdges.HasFlag(ResizeEdges.Top))
+            Top = _resizeStartBounds.Bottom - height;
+        else if (!hasVerticalEdge)
+            Top = _resizeStartBounds.Top + (_resizeStartBounds.Height - height) / 2;
+        else
+            Top = _resizeStartBounds.Top;
+
+        Width = width;
+        Height = height;
     }
 
     private void OverlayWindow_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
