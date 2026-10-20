@@ -1,6 +1,8 @@
 using BepInEx;
 using BepInEx.Unity.IL2CPP;
 using HarmonyLib;
+using Il2CppInterop.Runtime.Injection;
+using System.Collections;
 using System.Diagnostics;
 using System.IO.Pipes;
 using System.Net.Http;
@@ -10,6 +12,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Channels;
+using UnityEngine;
 
 namespace MalodyV.ReworkOverlay.Plugin;
 
@@ -18,15 +21,24 @@ public sealed class Plugin : BasePlugin
 {
     public const string PluginGuid = "com.baka666.malodyv.reworkoverlay";
     public const string PluginName = "MalodyV Rework Overlay";
-    public const string PluginVersion = "1.3.2";
+    public const string PluginVersion = "1.3.4";
     internal const string UpdateManifestUrl =
         "https://raw.githubusercontent.com/MCPsDE/malodyv-rework-overlay/main/manifest.json";
     private const string RuntimeChartTypeName = "Malody.Chart.iqy";
     private static readonly string HostPath = Path.Combine(Paths.PluginPath, "MalodyVReworkOverlay", "MalodyV.ReworkOverlay.exe");
     private static Harmony? _harmony;
+    private static readonly HashSet<MethodBase> EditorCommandHooks = new();
 
     public override void Load()
     {
+        try
+        {
+            RefreshScheduler.Initialize();
+        }
+        catch (Exception exception)
+        {
+            Log.LogError($"Failed to initialize event-driven refresh scheduling: {exception}");
+        }
         try
         {
             StartCompanion();
@@ -43,6 +55,8 @@ public sealed class Plugin : BasePlugin
         TryPatch(() => FindMethod("Malody.Scene.Item.ItemChart", "SetSelected"), nameof(SelectionPatch.ChartItemChanged), "hall chart focus");
         TryPatch(() => FindMethod("Malody.Scene.Panel.PanelMod", "OnDisable"), nameof(SelectionPatch.ModSettingsChanged), "hall and room mod selection");
         TryPatch(() => FindMethod("Malody.Scene.Panel.PanelJudge", "OnDisable"), nameof(SelectionPatch.ModSettingsChanged), "Turbo settings");
+        TryPatch(() => FindMethod("Malody.Scene.SceneEditor", "Start"), nameof(SelectionPatch.EditorStarted), "editor initialization");
+        TryPatch(() => FindMethod("Malody.Scene.SceneEditor", "OnDestroy"), nameof(SelectionPatch.EditorClosed), "editor exit");
         TryPatch(FindRoomConfigChangeMethod, nameof(SelectionPatch.ModSettingsChanged), "online room config sync");
         TryPatch(FindRoomChartPublisher, nameof(SelectionPatch.RoomChartResolved), "online room chart resolution");
         TryPatch(() => FindMethod("Malody.Scene.SceneChart", "OnClose"), nameof(SelectionPatch.SelectionCleared), "chart scene exit");
@@ -111,6 +125,34 @@ public sealed class Plugin : BasePlugin
 
         throw new MissingMethodException("Could not find the room chart resolver on PanelRoomSong.");
     }
+
+    internal static void InstallEditorCommandHook(object commandManager)
+    {
+        try
+        {
+            var method = commandManager.GetType().GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)
+                .FirstOrDefault(candidate =>
+                {
+                    var parameters = candidate.GetParameters();
+                    return candidate.Name == "JustDoIt" && candidate.ReturnType == typeof(void) &&
+                        parameters.Length == 2 && parameters[1].ParameterType == typeof(bool);
+                }) ?? throw new MissingMethodException("Could not find the editor command dispatcher.");
+            if (!EditorCommandHooks.Add(method))
+                return;
+            _harmony!.Patch(method, postfix: new HarmonyMethod(typeof(SelectionPatch), nameof(SelectionPatch.EditorNoteChanged)));
+            SelectionPipe.Diagnostic($"Patched editor note changes: {method.DeclaringType?.FullName}.{method.Name}.");
+        }
+        catch (Exception exception)
+        {
+            SelectionPipe.DiagnosticWarning($"Failed to patch editor note changes: {exception.Message}");
+        }
+    }
+
+    private static Type FindLoadedType(string fullName) =>
+        AppDomain.CurrentDomain.GetAssemblies()
+            .Select(assembly => assembly.GetType(fullName, throwOnError: false))
+            .FirstOrDefault(type => type is not null)
+        ?? throw new TypeLoadException($"Could not find {fullName} in loaded game assemblies.");
 
     private static MethodInfo FindRoomConfigChangeMethod()
     {
@@ -244,7 +286,8 @@ internal sealed record SelectionMessage(
     double SpeedRate = 1,
     int PlayMode = -1,
     int RandomSeed = 0,
-    string? TurboSignature = null);
+    string? TurboSignature = null,
+    string? EditorChartJson = null);
 
 internal sealed class PluginUpdateManifest
 {
@@ -552,21 +595,20 @@ internal static class SelectionPipe
                 ReadMember(localType, local, "playMode");
             mods = FilterPlayableMods(mods, rawMods?.GetType(), mode);
             var customJudge = TryGetPropertyValue(_customJudgeProperty, local) ?? ReadMember(localType, local, "customJudge");
-            var speed = ReadDouble(TryGetPropertyValue(_playSpeedProperty, local), double.NaN);
-            if (!double.IsFinite(speed))
+            double speed;
+            if (customJudge is not null)
+            {
                 speed = ReadCustomJudgeAudioSpeed(customJudge);
-            if (double.IsFinite(speed) && (speed < 0.5 || speed > 2.0))
-            {
-                DiagnosticWarning($"Turbo speed {speed:0.###} is outside MalodyV's supported 0.5-2.0 range.");
-                speed = double.NaN;
+                if (!double.IsFinite(speed) || speed < 0.5 || speed > 2.0)
+                {
+                    DiagnosticWarning($"Turbo audioSpeed {speed:0.###} is invalid; using neutral 1.0x instead of regular speed mods.");
+                    speed = 1d;
+                }
             }
-            if (!double.IsFinite(speed) || speed <= 0)
-            {
-                if ((mods & 0x20u) != 0) speed = 1.5;
-                else if ((mods & 0x10u) != 0) speed = 1.2;
-                else if ((mods & 0x100u) != 0) speed = 0.8;
-                else speed = 1d;
-            }
+            else if ((mods & 0x20u) != 0) speed = 1.5;
+            else if ((mods & 0x10u) != 0) speed = 1.2;
+            else if ((mods & 0x100u) != 0) speed = 0.8;
+            else speed = ReadDouble(TryGetPropertyValue(_playSpeedProperty, local), 1d);
 
             var randomSeed = TryGetPropertyValue(_randomSeedBackingProperty, local) ?? ReadMember(localType, local, "RandomSeed");
             return (mods, double.IsFinite(speed) && speed > 0 ? speed : 1d,
@@ -634,7 +676,20 @@ internal static class SelectionPipe
 
     public static void QueueCurrentChartRefresh()
     {
-        PublishCurrentChart();
+        RefreshScheduler.ScheduleChartRefresh();
+    }
+
+    public static void PublishEditorChart(string path, uint index, string version, string chartJson, int revision)
+    {
+        var fullPath = Path.GetFullPath(path);
+        var identity = $"editor|{fullPath}|{index}|{version}|{revision}";
+        Interlocked.Exchange(ref _lastIdentity, identity);
+        Interlocked.Exchange(ref _clearPublished, 0);
+        var update = new SelectionMessage("selection", fullPath, index, identity, version,
+            Mods: 0, SpeedRate: 1, PlayMode: 0, RandomSeed: 0, TurboSignature: "editor",
+            EditorChartJson: chartJson);
+        if (!Updates.Writer.TryWrite(update))
+            DiagnosticWarning("The editor snapshot could not be queued for the overlay host.");
     }
 
     private static uint FilterPlayableMods(uint mods, Type? modType, object? playMode)
@@ -804,6 +859,256 @@ internal static class SelectionPatch
     private static int _notificationDiagnosticWritten;
     private static int _hallDiagnosticWritten;
     private static int _roomDiagnosticWritten;
+    private static object? _editorChartManager;
+    private static string? _editorPath;
+    private static string? _editorVersion;
+    private static uint _editorIndex;
+    private static int _editorRevision;
+
+    public static void EditorStarted(object __instance)
+    {
+        var manager = InvokeNoArgs(__instance, "GetChartManager");
+        if (manager is null)
+        {
+            SelectionPipe.DiagnosticWarning("SceneEditor started before its chart manager was available.");
+            return;
+        }
+
+        _editorChartManager = manager;
+        Plugin.InstallEditorCommandHook(InvokeNoArgs(__instance, "GetCommandManager") ?? manager);
+        var chart = InvokeNoArgs(manager, "GetChart");
+        if (chart is null)
+        {
+            SelectionPipe.DiagnosticWarning("Editor chart manager did not expose its working chart.");
+            return;
+        }
+
+        _editorPath = ReadMember(chart, "FilePath")?.ToString();
+        _editorVersion = ReadMember(chart, "DisplayVersion")?.ToString() ?? "Editor";
+        _editorIndex = ReadUInt(ReadMember(chart, "IndexInFile"), 0);
+        Interlocked.Exchange(ref _editorRevision, 0);
+        RefreshScheduler.ScheduleEditorRefresh(0.5f);
+    }
+
+    public static void EditorNoteChanged(object[] __args)
+    {
+        if (_editorChartManager is null || __args.Length == 0 || !IsNoteCommand(__args[0]))
+            return;
+
+        RefreshScheduler.ScheduleEditorRefresh();
+    }
+
+    public static void EditorClosed()
+    {
+        _editorChartManager = null;
+        _editorPath = null;
+        _editorVersion = null;
+        _editorRevision = 0;
+        SelectionPipe.QueueCurrentChartRefresh();
+    }
+
+    public static void PublishEditorChart()
+    {
+        var manager = _editorChartManager;
+        if (manager is null)
+            return;
+
+        try
+        {
+            var snapshot = BuildEditorChartJson(manager);
+            var path = string.IsNullOrWhiteSpace(_editorPath)
+                ? "editor-preview.mc"
+                : _editorPath;
+            var revision = Interlocked.Increment(ref _editorRevision);
+            SelectionPipe.PublishEditorChart(path, _editorIndex, _editorVersion ?? "Editor", snapshot, revision);
+        }
+        catch (Exception exception)
+        {
+            SelectionPipe.DiagnosticWarning($"Unable to snapshot the editor chart: {exception.Message}");
+        }
+    }
+
+    private static string BuildEditorChartJson(object manager)
+    {
+        var chart = InvokeNoArgs(manager, "GetChart")
+            ?? throw new InvalidDataException("The editor working chart is unavailable.");
+        var meta = ReadMember(chart, "meta") ?? throw new InvalidDataException("Editor chart metadata is unavailable.");
+        var modeName = ReadMember(manager, "Mode")?.ToString() ?? "Key";
+        var mcMode = modeName switch
+        {
+            "Catch" => 3,
+            "Pad" => 4,
+            "Taiko" => 5,
+            "Ring" => 6,
+            "Slide" => 7,
+            "Live" => 8,
+            "Cube" => 9,
+            _ => 0,
+        };
+        var notes = new List<Dictionary<string, object?>>();
+        var maxColumn = Math.Max(1, ReadInt(ReadMember(meta, "Column"), 1));
+        var playableColumnCount = maxColumn;
+        if (modeName is "Catch" or "Slide")
+            maxColumn = 18;
+        foreach (var note in EnumerateObjects(ReadMember(manager, "Notes")))
+        {
+            if (note is null)
+                continue;
+            var beat = ReadBeat(ReadMember(ReadMember(note, "start"), "Beat"));
+            var columnValue = ReadMember(note, "X") ?? ReadMember(note, "column") ?? ReadMember(note, "index");
+            if (beat is null || columnValue is null)
+                continue;
+
+            var column = ReadInt(columnValue, -1);
+            if (modeName == "Key" && (column < 0 || column >= playableColumnCount))
+                continue;
+            if (modeName == "Catch")
+                column = (int)Math.Round(Math.Clamp(column, 0, 512) * 17d / 512d);
+            else if (modeName == "Slide")
+                column = (int)Math.Round(Math.Clamp(column, 0, 255) * 17d / 255d);
+            if (column < 0)
+                continue;
+            if (modeName is not ("Catch" or "Slide"))
+                maxColumn = Math.Max(maxColumn, column + 1);
+            var item = new Dictionary<string, object?>
+            {
+                ["beat"] = beat,
+                ["column"] = column,
+                ["type"] = ReadInt(ReadMember(note, "noteType"), 0),
+            };
+            var endBeat = ReadBeat(ReadMember(ReadMember(note, "end"), "Beat"));
+            if (endBeat is not null)
+                item["endbeat"] = endBeat;
+            notes.Add(item);
+        }
+
+        if (maxColumn is < 1 or > 18)
+            throw new InvalidDataException($"Editor key count {maxColumn} is outside the supported 1-18 range.");
+
+        var times = new List<Dictionary<string, object?>>();
+        foreach (var point in EnumerateObjects(InvokeNoArgs(manager, "GetTimes")))
+        {
+            var beat = ReadBeat(ReadMember(ReadMember(point, "start"), "Beat"));
+            var bpm = ReadDouble(ReadMember(point, "BPM"), double.NaN);
+            if (beat is null || !double.IsFinite(bpm) || bpm <= 0)
+                continue;
+            var signature = ReadDouble(ReadMember(point, "signature"), 4);
+            times.Add(new Dictionary<string, object?> { ["beat"] = beat, ["bpm"] = bpm, ["signature"] = signature });
+        }
+        if (times.Count == 0)
+            times.Add(new Dictionary<string, object?> { ["beat"] = new[] { 0, 0, 1 }, ["bpm"] = 120, ["signature"] = 4 });
+
+        var songMeta = ReadMember(ReadMember(chart, "Song"), "meta");
+        var snapshot = new Dictionary<string, object?>
+        {
+            ["meta"] = new Dictionary<string, object?>
+            {
+                ["mode"] = mcMode,
+                ["creator"] = ReadMember(meta, "Creator")?.ToString() ?? "Unknown",
+                ["version"] = ReadMember(chart, "DisplayVersion")?.ToString() ?? "Editor",
+                ["background"] = ReadMember(meta, "Bgimage")?.ToString() ?? "",
+                ["mode_ext"] = new Dictionary<string, object?> { ["column"] = maxColumn },
+                ["song"] = new Dictionary<string, object?>
+                {
+                    ["title"] = ReadMember(songMeta, "Title")?.ToString() ?? ReadMember(meta, "Title")?.ToString() ?? "Editor Preview",
+                    ["artist"] = ReadMember(songMeta, "Artist")?.ToString() ?? ReadMember(meta, "Artist")?.ToString() ?? "Unknown Artist",
+                    ["file"] = ReadMember(meta, "MainAudio")?.ToString() ?? "audio.mp3",
+                },
+            },
+            ["time"] = times,
+            ["note"] = notes,
+            ["effect"] = Array.Empty<object>(),
+        };
+        return JsonSerializer.Serialize(snapshot);
+    }
+
+    private static bool IsNoteCommand(object? command)
+    {
+        var commandType = ReadMember(command, "Type")?.ToString();
+        if (commandType is "AddNote" or "DeleteNote" or "ChangeNoteType" or "MoveNoteStartTime" or
+            "MoveNoteEndTime" or "MoveNoteX" or "ChangeNoteWidth" or "MoveSlideBody" or
+            "AddSlideRear" or "DeleteSlideRear" or "DeleteSlideSeg" or "ChangeArrow" or
+            "ChangeGroup" or "PadEndConfirm")
+            return true;
+
+        for (var type = command?.GetType(); type is not null; type = type.BaseType)
+        {
+            if (string.Equals(type.FullName, "Malody.Edit.Command.CommandBaseNote", StringComparison.Ordinal))
+                return true;
+        }
+        return false;
+    }
+
+    private static object? InvokeNoArgs(object? instance, string name)
+    {
+        if (instance is null)
+            return null;
+        var method = instance.GetType().GetMethod(name, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance,
+            binder: null, Type.EmptyTypes, modifiers: null);
+        return method?.Invoke(instance, null);
+    }
+
+    private static object? ReadMember(object? instance, string name)
+    {
+        if (instance is null)
+            return null;
+        var type = instance.GetType();
+        try
+        {
+            var property = type.GetProperty(name, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+            if (property is not null)
+                return property.GetValue(instance);
+            return type.GetField(name, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)?.GetValue(instance);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static IEnumerable<object?> EnumerateObjects(object? collection)
+    {
+        if (collection is IEnumerable enumerable)
+        {
+            foreach (var item in enumerable)
+                yield return item;
+            yield break;
+        }
+
+        var iterator = InvokeNoArgs(collection, "GetEnumerator");
+        var moveNext = iterator?.GetType().GetMethod("MoveNext", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+        var current = iterator?.GetType().GetProperty("Current", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+        while (iterator is not null && moveNext?.Invoke(iterator, null) is true)
+            yield return current?.GetValue(iterator);
+    }
+
+    private static int[]? ReadBeat(object? beat)
+    {
+        if (beat is null)
+            return null;
+        var denominator = ReadInt(ReadMember(beat, "Denom"), 0);
+        if (denominator <= 0)
+            return null;
+        return new[] { ReadInt(ReadMember(beat, "Int"), 0), ReadInt(ReadMember(beat, "Numer"), 0), denominator };
+    }
+
+    private static int ReadInt(object? value, int fallback)
+    {
+        try { return value is null ? fallback : Convert.ToInt32(value); }
+        catch { return fallback; }
+    }
+
+    private static uint ReadUInt(object? value, uint fallback)
+    {
+        try { return value is null ? fallback : Convert.ToUInt32(value); }
+        catch { return fallback; }
+    }
+
+    private static double ReadDouble(object? value, double fallback)
+    {
+        try { return value is null ? fallback : Convert.ToDouble(value, System.Globalization.CultureInfo.InvariantCulture); }
+        catch { return fallback; }
+    }
 
     public static void NotificationPosted(object[] __args)
     {
@@ -873,4 +1178,41 @@ internal static class SelectionPatch
 
     public static void ModSettingsChanged() => SelectionPipe.QueueCurrentChartRefresh();
 
+}
+
+internal sealed class RefreshScheduler : MonoBehaviour
+{
+    private static RefreshScheduler? _instance;
+
+    public RefreshScheduler(IntPtr pointer) : base(pointer) { }
+
+    public static void Initialize()
+    {
+        if (_instance is not null)
+            return;
+        ClassInjector.RegisterTypeInIl2Cpp<RefreshScheduler>();
+        var gameObject = new GameObject("MalodyVReworkOverlay.RefreshScheduler");
+        UnityEngine.Object.DontDestroyOnLoad(gameObject);
+        _instance = gameObject.AddComponent<RefreshScheduler>();
+    }
+
+    public static void ScheduleChartRefresh()
+    {
+        if (_instance is null)
+            return;
+        _instance.CancelInvoke(nameof(FlushChartRefresh));
+        _instance.Invoke(nameof(FlushChartRefresh), 0.15f);
+    }
+
+    public static void ScheduleEditorRefresh(float delay = 0.25f)
+    {
+        if (_instance is null)
+            return;
+        _instance.CancelInvoke(nameof(FlushEditorRefresh));
+        _instance.Invoke(nameof(FlushEditorRefresh), delay);
+    }
+
+    private void FlushChartRefresh() => SelectionPipe.PublishCurrentChart();
+
+    private void FlushEditorRefresh() => SelectionPatch.PublishEditorChart();
 }

@@ -34,6 +34,9 @@ internal sealed class SelectionMessage
     [JsonPropertyName("turboSignature")]
     public string? TurboSignature { get; init; }
 
+    [JsonPropertyName("editorChartJson")]
+    public string? EditorChartJson { get; init; }
+
     [JsonPropertyName("pluginVersion")]
     public string? PluginVersion { get; init; }
 

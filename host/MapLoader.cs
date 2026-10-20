@@ -15,7 +15,19 @@ internal static class MapLoader
     public static async Task<MapPayload> LoadAsync(SelectionMessage selection, OverlaySettings settings)
     {
         var sourcePath = Path.GetFullPath(selection.Path ?? throw new InvalidDataException("Missing chart path."));
-        var source = await ReadChartSourceAsync(sourcePath, selection.Index, selection.Version);
+        ChartSource source;
+        if (string.IsNullOrWhiteSpace(selection.EditorChartJson))
+        {
+            source = await ReadChartSourceAsync(sourcePath, selection.Index, selection.Version);
+        }
+        else
+        {
+            var original = File.Exists(sourcePath)
+                ? await ReadChartSourceAsync(sourcePath, selection.Index, selection.Version)
+                : null;
+            source = new ChartSource(Encoding.UTF8.GetBytes(selection.EditorChartJson),
+                Path.GetFileNameWithoutExtension(sourcePath) + ".mc", sourcePath, original?.Background);
+        }
         var extension = Path.GetExtension(source.Name).ToLowerInvariant();
         string osuText;
         byte[]? background = source.Background is { Length: > 0 } suppliedBackground
