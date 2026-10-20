@@ -123,15 +123,44 @@ public partial class OverlayWindow : Window
         {
             Left = _settings.Left;
             Top = _settings.Top;
-            Width = Math.Clamp(_settings.Width, MinWidth, MaximumCardWidth);
+            var configuredWidth = double.IsFinite(_settings.Width) ? _settings.Width : 515;
+            Width = Math.Clamp(configuredWidth, MinWidth, MaximumCardWidth);
             Height = Width / CardAspectRatio;
+            var boundsRecovered = EnsureVisibleBounds();
             _settings.Width = Width;
             _settings.Height = Height;
+            _settings.Left = Left;
+            _settings.Top = Top;
+            if (boundsRecovered)
+                PersistGeometry();
         }
         Opacity = 1;
         Topmost = _settings.AlwaysOnTop;
         ApplyHitTesting();
         ApplyCardOpacity();
+    }
+
+    private bool EnsureVisibleBounds()
+    {
+        var originalLeft = Left;
+        var originalTop = Top;
+        if (!double.IsFinite(originalLeft) || !double.IsFinite(originalTop))
+        {
+            Left = 40;
+            Top = 80;
+            return true;
+        }
+
+        var virtualLeft = SystemParameters.VirtualScreenLeft;
+        var virtualTop = SystemParameters.VirtualScreenTop;
+        var virtualRight = virtualLeft + SystemParameters.VirtualScreenWidth;
+        var virtualBottom = virtualTop + SystemParameters.VirtualScreenHeight;
+        var maxLeft = Math.Max(virtualLeft, virtualRight - Width);
+        var maxTop = Math.Max(virtualTop, virtualBottom - Height);
+
+        Left = Math.Clamp(originalLeft, virtualLeft, maxLeft);
+        Top = Math.Clamp(originalTop, virtualTop, maxTop);
+        return Left != originalLeft || Top != originalTop;
     }
 
     protected override void OnSourceInitialized(EventArgs e)
