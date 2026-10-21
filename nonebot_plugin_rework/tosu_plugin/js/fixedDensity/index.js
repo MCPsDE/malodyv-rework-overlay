@@ -105,6 +105,10 @@ const LN_MIN_HOLD_MS = 20.0; // 一次点击的物理最短时长补足
 const LN_VALID_OD_GAIN = 0.4; // 有效性门 OD 项系数
 const LN_VALID_RAMP = 1.3; // 有效性门过渡宽度系数
 
+function profileTimeKey(time) {
+    return Math.round(Number(time) / TIME_EPS);
+}
+
 function lowerBound(arr, target) {
     let lo = 0;
     let hi = arr.length;
@@ -904,6 +908,10 @@ function buildProfileTimes(mergedSeq, lanes) {
         times.push(time);
     }
     times.push(end);
+    // Keep every head/tail event on the graph axis. A fixed sampling grid can
+    // skip a release after DT/HT scaling, which makes active LN difficulty
+    // appear cumulative because the matching negative change is never sampled.
+    times.push(...endpoints);
     for (const row of mergedSeq) {
         times.push(row[0]);
     }
@@ -922,7 +930,7 @@ function buildLnProfile(lanes, od, rate, times, n) {
         }
 
         for (let i = 0; i < holds.length; i += 1) {
-            const releaseTime = (holds[i].t + holds[i].len) * invRate;
+            const releaseTime = profileTimeKey((holds[i].t + holds[i].len) * invRate);
             const current = releaseEvents.get(releaseTime) || [0.0, 0.0];
             current[0] += (eventScores.sRel[i] || 0.0) * rate;
             current[1] += (eventScores.sJack[i] || 0.0) * rate;
@@ -931,8 +939,8 @@ function buildLnProfile(lanes, od, rate, times, n) {
 
         for (let i = 0; i < holds.length; i += 1) {
             const score = eventScores.sHold[i] || 0.0;
-            const start = holds[i].t * invRate;
-            const end = (holds[i].t + holds[i].len) * invRate;
+            const start = profileTimeKey(holds[i].t * invRate);
+            const end = profileTimeKey((holds[i].t + holds[i].len) * invRate);
             holdChanges.set(start, (holdChanges.get(start) || 0.0) + score);
             holdChanges.set(end, (holdChanges.get(end) || 0.0) - score);
         }
@@ -944,8 +952,9 @@ function buildLnProfile(lanes, od, rate, times, n) {
     const values = [];
     let activeHoldScore = 0.0;
     for (const time of times) {
-        activeHoldScore += holdChanges.get(time) || 0.0;
-        const release = releaseEvents.get(time) || [0.0, 0.0];
+        const key = profileTimeKey(time);
+        activeHoldScore += holdChanges.get(key) || 0.0;
+        const release = releaseEvents.get(key) || [0.0, 0.0];
         const localMultiplier = rhoFactor * (
             LN_MULT_REL * release[0] * absorb
             + LN_MULT_JACK * release[1] * absorb

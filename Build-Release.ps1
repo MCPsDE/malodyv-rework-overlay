@@ -5,7 +5,7 @@ param(
 $ErrorActionPreference = "Stop"
 
 $root = (Resolve-Path $PSScriptRoot).Path
-$release = Join-Path $root "release\MalodyVReworkOverlay"
+$release = Join-Path $root "release\MalodyVReworkOverlay-1.3.14"
 $releaseParent = [IO.Path]::GetDirectoryName($release)
 $hostProject = Join-Path $root "host\MalodyV.ReworkOverlay.Host.csproj"
 $pluginProject = Join-Path $root "plugin\MalodyV.ReworkOverlay.Plugin.csproj"
@@ -17,6 +17,15 @@ if ([string]::IsNullOrWhiteSpace($BotPluginSource)) {
     if (Test-Path -LiteralPath $candidate) {
         $BotPluginSource = (Resolve-Path $candidate).Path
     }
+}
+
+$sourceBotManifest = Join-Path $root "..\..\bepinex-bot-manifest.json"
+if (Test-Path -LiteralPath $sourceBotManifest) {
+    Copy-Item -LiteralPath $sourceBotManifest `
+        -Destination (Join-Path $root "bepinex-bot-manifest.json") -Force
+}
+if (-not (Test-Path -LiteralPath (Join-Path $root "bepinex-bot-manifest.json"))) {
+    throw "A bundled bepinex-bot-manifest.json is required for offline verification."
 }
 
 if (-not [string]::IsNullOrWhiteSpace($BotPluginSource)) {
@@ -94,6 +103,10 @@ function Get-DirectorySha256([string]$Directory) {
 }
 
 $localBotHash = Get-DirectorySha256 $bundledBotPlugin
+$bundledBotManifest = Get-Content -LiteralPath (Join-Path $root "bepinex-bot-manifest.json") -Raw | ConvertFrom-Json
+if (-not [string]::Equals($localBotHash, $bundledBotManifest.directorySha256, [StringComparison]::OrdinalIgnoreCase)) {
+    throw "Bundled Bot manifest hash does not match the synchronized Bot directory. Regenerate bepinex-bot-manifest.json first."
+}
 $publishedBotPlugin = Join-Path $hostRelease "nonebot_plugin_rework"
 if (-not (Test-Path -LiteralPath (Join-Path $publishedBotPlugin "tosu_plugin\index.html"))) {
     throw "Publish output does not contain the complete nonebot_plugin_rework directory."
@@ -102,6 +115,8 @@ $publishedBotHash = Get-DirectorySha256 $publishedBotPlugin
 if ($publishedBotHash -ne $localBotHash) {
     throw "Published Bot plugin directory does not match its bundled source."
 }
+Copy-Item -LiteralPath (Join-Path $root "bepinex-bot-manifest.json") `
+    -Destination (Join-Path $hostRelease "bepinex-bot-manifest.json") -Force
 
 $pluginHash = (Get-FileHash -LiteralPath (Join-Path $releaseResolved "MalodyV.ReworkOverlay.Plugin.dll") -Algorithm SHA256).Hash
 $hostHash = (Get-FileHash -LiteralPath (Join-Path $hostRelease "MalodyV.ReworkOverlay.exe") -Algorithm SHA256).Hash

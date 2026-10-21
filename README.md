@@ -5,7 +5,7 @@ window, and the original `nonebot_plugin_rework` directory vendored from
 `MCPsDE/nonebot-plugin-for-osumania4k`. The card is served directly from
 `nonebot_plugin_rework/tosu_plugin`; the legacy `Card` directory is not used.
 
-Current release: `1.3.12`.
+Current release: `1.3.14`.
 
 ## Build
 
@@ -51,11 +51,14 @@ Holds conversion. Changes to the active mod signature invalidate the card's
 analysis cache and update the selected chart without requiring a map switch.
 
 At startup, the host checks the Bot directory against
-`bepinex-bot-manifest.json`. On mismatch it downloads only the fixed GitHub
-archive, rejects unsafe ZIP paths, links, oversized archives, and untrusted
-redirects, verifies the extracted directory SHA-256, stages it, then replaces
-only `nonebot_plugin_rework`. A failed download or verification leaves the
-bundled directory in place. The game plugin independently computes its own DLL
+`bepinex-bot-manifest.json`. It tries GitHub Raw and a jsDelivr mirror using
+normal HTTPS certificate validation. If those checks are unavailable, the
+host verifies the bundled Bot directory against its packaged manifest and
+continues offline when they match. On mismatch it downloads only the fixed
+GitHub archive, rejects unsafe ZIP paths, links, oversized archives, and
+untrusted redirects, verifies the extracted directory SHA-256, stages it, then
+replaces only `nonebot_plugin_rework`. A failed download or verification
+leaves the bundled directory in place. The game plugin independently computes its own DLL
 SHA-256 and compares it with the published `manifest.json`; a mismatch is
 reported in a dismissible prompt and never blocks play.
 

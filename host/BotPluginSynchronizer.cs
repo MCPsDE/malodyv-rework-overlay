@@ -19,11 +19,15 @@ internal sealed class BotPluginManifest
     public string? ArchiveUrl { get; init; }
 }
 
-internal sealed record BotPluginSyncResult(bool Updated, string? Version, string? Error);
+internal sealed record BotPluginSyncResult(
+    bool Updated,
+    string? Version,
+    string? Error,
+    bool UsedBundledFallback = false);
 
 internal static class BotPluginSynchronizer
 {
-    private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(20) };
+    private static readonly HttpClient Http = CreateHttpClient();
     private static readonly HashSet<string> TextExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
         ".css", ".html", ".js", ".json", ".mjs", ".py", ".txt",
@@ -31,14 +35,26 @@ internal static class BotPluginSynchronizer
     private const string DirectoryName = "nonebot_plugin_rework";
     private const string RepositoryArchiveUrl =
         "https://github.com/MCPsDE/nonebot-plugin-for-osumania4k/archive/refs/heads/main.zip";
+    private const string CodeloadArchiveUrl =
+        "https://codeload.github.com/MCPsDE/nonebot-plugin-for-osumania4k/zip/refs/heads/main";
+    private const string GitHubRawManifestUrl =
+        "https://github.com/MCPsDE/nonebot-plugin-for-osumania4k/raw/refs/heads/main/bepinex-bot-manifest.json";
+    private const string JsDelivrManifestUrl =
+        "https://cdn.jsdelivr.net/gh/MCPsDE/nonebot-plugin-for-osumania4k@main/bepinex-bot-manifest.json";
     private const long MaximumArchiveBytes = 64 * 1024 * 1024;
     private const long MaximumExpandedBytes = 256 * 1024 * 1024;
     private const int MaximumArchiveEntries = 20_000;
 
-    static BotPluginSynchronizer()
+    private static HttpClient CreateHttpClient()
     {
-        Http.DefaultRequestHeaders.UserAgent.ParseAdd("MalodyV-Rework-Overlay");
-        Http.DefaultRequestHeaders.Accept.ParseAdd("application/json");
+        var handler = new HttpClientHandler
+        {
+            AutomaticDecompression = System.Net.DecompressionMethods.All,
+        };
+        var client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(20) };
+        client.DefaultRequestHeaders.UserAgent.ParseAdd("MalodyV-Rework-Overlay");
+        client.DefaultRequestHeaders.Accept.ParseAdd("application/json");
+        return client;
     }
 
     public static async Task<BotPluginSyncResult> EnsureCurrentAsync(
@@ -49,23 +65,15 @@ internal static class BotPluginSynchronizer
         if (!settings.BotPluginSyncEnabled || string.IsNullOrWhiteSpace(settings.BotPluginManifestUrl))
             return new(false, null, null);
 
-        BotPluginManifest? manifest;
-        try
+        var manifestResult = await TryGetManifestAsync(settings.BotPluginManifestUrl, cancellationToken);
+        var manifest = manifestResult.Manifest;
+        if (manifest is null)
         {
-            if (!Uri.TryCreate(settings.BotPluginManifestUrl, UriKind.Absolute, out var manifestUri)
-                || manifestUri.Scheme != Uri.UriSchemeHttps
-                || !string.Equals(manifestUri.Host, "raw.githubusercontent.com", StringComparison.OrdinalIgnoreCase)
-                || !manifestUri.AbsolutePath.Equals(
-                    "/MCPsDE/nonebot-plugin-for-osumania4k/main/bepinex-bot-manifest.json",
-                    StringComparison.Ordinal))
-                return new(false, null, "Remote bot card manifest URL is not trusted.");
-
-            manifest = await Http.GetFromJsonAsync<BotPluginManifest>(
-                manifestUri, cancellationToken);
-        }
-        catch (Exception exception)
-        {
-            return new(false, null, $"Remote bot card manifest unavailable: {exception.Message}");
+            var bundledManifest = GetVerifiedBundledManifest(localDirectory);
+            if (bundledManifest is not null)
+                return new(false, bundledManifest.Version, null, true);
+            return new(false, null,
+                $"Remote bot card manifest unavailable: {manifestResult.Error ?? "unknown error"}");
         }
 
         if (manifest is null
@@ -73,8 +81,10 @@ internal static class BotPluginSynchronizer
             || manifest.DirectorySha256 is not { Length: 64 } directoryHash
             || !directoryHash.All(Uri.IsHexDigit)
             || !Uri.TryCreate(manifest.ArchiveUrl, UriKind.Absolute, out var archiveUri)
-            || !string.Equals(archiveUri.AbsoluteUri, RepositoryArchiveUrl, StringComparison.Ordinal))
-            return new(false, manifest?.Version, "Remote bot card manifest is invalid.");
+            || !IsTrustedArchiveUri(archiveUri))
+            return GetVerifiedBundledManifest(localDirectory) is { } bundledManifest
+                ? new(false, bundledManifest.Version, null, true)
+                : new(false, manifest?.Version, "Remote bot card manifest is invalid.");
 
         var workDirectory = Path.Combine(AppContext.BaseDirectory, $".bot-card-sync-{Guid.NewGuid():N}");
         try
@@ -89,10 +99,7 @@ internal static class BotPluginSynchronizer
             {
                 response.EnsureSuccessStatusCode();
                 var finalUri = response.RequestMessage?.RequestUri;
-                if (finalUri is null
-                    || finalUri.Scheme != Uri.UriSchemeHttps
-                    || !(string.Equals(finalUri.Host, "github.com", StringComparison.OrdinalIgnoreCase)
-                        || string.Equals(finalUri.Host, "codeload.github.com", StringComparison.OrdinalIgnoreCase)))
+                if (finalUri is null || !IsTrustedArchiveUri(finalUri))
                     return new(false, manifest.Version, "Remote archive redirected to an untrusted host.");
                 if (response.Content.Headers.ContentLength is > MaximumArchiveBytes)
                     return new(false, manifest.Version, "Remote archive exceeds the download size limit.");
@@ -133,11 +140,120 @@ internal static class BotPluginSynchronizer
         }
         catch (Exception exception)
         {
-            return new(false, manifest.Version, exception.Message);
+            return GetVerifiedBundledManifest(localDirectory) is { } bundledManifest
+                ? new(false, bundledManifest.Version, null, true)
+                : new(false, manifest.Version, exception.Message);
         }
         finally
         {
             TryDeleteDirectory(workDirectory);
+        }
+    }
+
+    private static async Task<(BotPluginManifest? Manifest, string? Error)> TryGetManifestAsync(
+        string configuredUrl,
+        CancellationToken cancellationToken)
+    {
+        var urls = new List<string>();
+        if (!string.IsNullOrWhiteSpace(configuredUrl))
+            urls.Add(configuredUrl);
+        urls.Add(GitHubRawManifestUrl);
+        urls.Add(JsDelivrManifestUrl);
+
+        var errors = new List<string>();
+        foreach (var url in urls.Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || !IsTrustedManifestUri(uri))
+            {
+                errors.Add("untrusted manifest URL");
+                continue;
+            }
+
+            using var requestTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            requestTimeout.CancelAfter(TimeSpan.FromSeconds(4));
+            try
+            {
+                using var response = await Http.GetAsync(
+                    uri,
+                    HttpCompletionOption.ResponseHeadersRead,
+                    requestTimeout.Token);
+                response.EnsureSuccessStatusCode();
+                var finalUri = response.RequestMessage?.RequestUri;
+                if (finalUri is null || !IsTrustedManifestUri(finalUri))
+                    throw new InvalidDataException("Remote manifest redirected to an untrusted host.");
+
+                await using var stream = await response.Content.ReadAsStreamAsync(requestTimeout.Token);
+                var manifest = await System.Text.Json.JsonSerializer.DeserializeAsync<BotPluginManifest>(
+                    stream, cancellationToken: requestTimeout.Token);
+                if (manifest is not null)
+                    return (manifest, null);
+                errors.Add("empty response");
+            }
+            catch (Exception exception) when (!cancellationToken.IsCancellationRequested
+                && (exception is HttpRequestException
+                    || exception is OperationCanceledException
+                    || exception is System.Text.Json.JsonException
+                    || exception is InvalidDataException))
+            {
+                errors.Add(exception.Message);
+            }
+        }
+
+        return (null, errors.Count == 0 ? null : string.Join("; ", errors.Take(2)));
+    }
+
+    private static bool IsTrustedManifestUri(Uri uri)
+    {
+        if (uri.Scheme != Uri.UriSchemeHttps)
+            return false;
+        if (string.Equals(uri.Host, "raw.githubusercontent.com", StringComparison.OrdinalIgnoreCase))
+            return uri.AbsolutePath.Equals(
+                "/MCPsDE/nonebot-plugin-for-osumania4k/main/bepinex-bot-manifest.json",
+                StringComparison.Ordinal);
+        if (string.Equals(uri.Host, "github.com", StringComparison.OrdinalIgnoreCase))
+            return uri.AbsolutePath.Equals(
+                "/MCPsDE/nonebot-plugin-for-osumania4k/raw/refs/heads/main/bepinex-bot-manifest.json",
+                StringComparison.Ordinal);
+        return string.Equals(uri.Host, "cdn.jsdelivr.net", StringComparison.OrdinalIgnoreCase)
+            && uri.AbsolutePath.Equals(
+                "/gh/MCPsDE/nonebot-plugin-for-osumania4k@main/bepinex-bot-manifest.json",
+                StringComparison.Ordinal);
+    }
+
+    private static bool IsTrustedArchiveUri(Uri uri)
+    {
+        if (uri.Scheme != Uri.UriSchemeHttps)
+            return false;
+        if (string.Equals(uri.Host, "github.com", StringComparison.OrdinalIgnoreCase))
+            return uri.AbsoluteUri.Equals(RepositoryArchiveUrl, StringComparison.Ordinal);
+        return string.Equals(uri.Host, "codeload.github.com", StringComparison.OrdinalIgnoreCase)
+            && uri.AbsoluteUri.Equals(CodeloadArchiveUrl, StringComparison.Ordinal);
+    }
+
+    private static BotPluginManifest? GetVerifiedBundledManifest(string localDirectory)
+    {
+        var manifestPath = Path.Combine(AppContext.BaseDirectory, "bepinex-bot-manifest.json");
+        try
+        {
+            var manifest = System.Text.Json.JsonSerializer.Deserialize<BotPluginManifest>(
+                File.ReadAllText(manifestPath));
+            if (manifest is null
+                || string.IsNullOrWhiteSpace(manifest.Version)
+                || manifest.DirectorySha256 is not { Length: 64 } directoryHash
+                || !directoryHash.All(Uri.IsHexDigit)
+                || !Uri.TryCreate(manifest.ArchiveUrl, UriKind.Absolute, out var archiveUri)
+                || !IsTrustedArchiveUri(archiveUri)
+                || !File.Exists(Path.Combine(localDirectory, "tosu_plugin", "index.html")))
+                return null;
+
+            var localHash = ComputeDirectorySha256(localDirectory);
+            return string.Equals(localHash, directoryHash, StringComparison.OrdinalIgnoreCase)
+                ? manifest
+                : null;
+        }
+        catch
+        {
+            return null;
         }
     }
 

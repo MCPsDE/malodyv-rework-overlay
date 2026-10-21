@@ -34,6 +34,28 @@ function interpSingle(newX, oldX, oldVals) {
     return y0 + t * (y1 - y0);
 }
 
+function createZeroResult(withGraph, lnRatio, columnCount, times = []) {
+    const safeLnRatio = Number.isFinite(lnRatio) ? lnRatio : 0;
+    const safeColumnCount = Number.isFinite(columnCount) ? columnCount : 0;
+
+    if (!withGraph) return [0, safeLnRatio, safeColumnCount];
+
+    const safeTimes = Array.from(times, (time) => Number.isFinite(time) ? time : 0);
+    return {
+        star: 0,
+        lnRatio: safeLnRatio,
+        columnCount: safeColumnCount,
+        graph: {
+            times: safeTimes,
+            values: new Array(safeTimes.length).fill(0),
+        },
+    };
+}
+
+function isFiniteSeries(values) {
+    return Array.from(values).every((value) => Number.isFinite(value));
+}
+
 
 
 
@@ -882,9 +904,16 @@ export function calculate(osuText, speedRate = 1.0, odFlag = null, cvtFlag = nul
 
     if (status === "Fail") return -1;
     if (status === "NotMania") return -2;
-    if (!noteSeq.length || K <= 0) return -1;
+    // D3 drops the first note before calculating difficulty. A valid map with
+    // one (or fewer) remaining notes has no interval over which to estimate;
+    // return a finite zero result instead of entering the corner math with an
+    // empty sequence.
+    if (!noteSeq.length || K <= 0) return createZeroResult(withGraph, lnRatio, columnCount);
 
     const { allCorners, baseCorners, ACorners } = getCorners(T, noteSeq);
+    if (allCorners.length < 2 || baseCorners.length < 2 || ACorners.length < 2) {
+        return createZeroResult(withGraph, lnRatio, columnCount, allCorners);
+    }
 
     const keyUsage = getKeyUsage(K, T, noteSeq, baseCorners);
     const activeColumns = baseCorners.map((_, i) => {
@@ -927,6 +956,9 @@ export function calculate(osuText, speedRate = 1.0, odFlag = null, cvtFlag = nul
     const TAll = (Abar[i] ** (3 / KsArr[i]) * Xbar[i]) / (Xbar[i] + SAll + 1);
     DAll[i] = 2.7 * (SAll ** 0.5) * (TAll ** 1.5) + SAll * 0.27;
     }
+    if (!isFiniteSeries(DAll)) {
+        return createZeroResult(withGraph, lnRatio, columnCount, allCorners);
+    }
 
     const gaps = new Array(allCorners.length).fill(0);
     gaps[0] = (allCorners[1] - allCorners[0]) / 2;
@@ -938,6 +970,9 @@ export function calculate(osuText, speedRate = 1.0, odFlag = null, cvtFlag = nul
     // D2: effectiveWeights uses C_arrV2 by default, C_arr under Classic —
     // cs MACalculator.cs:837-842 `ContainsCL ? C_arr : C_arrV2`, genirx dart :1487.
     const effectiveWeights = (options?.classicMod === true ? CArr : CArrV2).map((c, i) => c * gaps[i]);
+    if (!isFiniteSeries(gaps) || !isFiniteSeries(effectiveWeights)) {
+        return createZeroResult(withGraph, lnRatio, columnCount, allCorners);
+    }
     const sortedIndices = DAll.map((_, i) => i).sort((a, b) => DAll[a] - DAll[b]);
     const DSorted = sortedIndices.map((i) => DAll[i]);
     const wSorted = sortedIndices.map((i) => effectiveWeights[i]);
@@ -950,7 +985,13 @@ export function calculate(osuText, speedRate = 1.0, odFlag = null, cvtFlag = nul
     }
 
     const totalWeight = cumWeights[cumWeights.length - 1];
+    if (!Number.isFinite(totalWeight) || totalWeight <= 0) {
+        return createZeroResult(withGraph, lnRatio, columnCount, allCorners);
+    }
     const normCumWeights = cumWeights.map((w) => w / totalWeight);
+    if (!isFiniteSeries(normCumWeights)) {
+        return createZeroResult(withGraph, lnRatio, columnCount, allCorners);
+    }
 
     const percentileIndices = targetPercentiles.map((p) => bisectLeft(normCumWeights, p));
 
@@ -966,7 +1007,13 @@ export function calculate(osuText, speedRate = 1.0, odFlag = null, cvtFlag = nul
     num += (DSorted[i] ** 5) * wSorted[i];
     den += wSorted[i];
     }
+    if (!Number.isFinite(num) || !Number.isFinite(den) || den <= 0 || num < 0) {
+        return createZeroResult(withGraph, lnRatio, columnCount, allCorners);
+    }
     const weightedMean = (num / den) ** (1 / 5);
+    if (!Number.isFinite(weightedMean)) {
+        return createZeroResult(withGraph, lnRatio, columnCount, allCorners);
+    }
 
     let sr = (0.88 * percentile93) * 0.25 + (0.94 * percentile83) * 0.2 + weightedMean * 0.55;
 
@@ -979,6 +1026,9 @@ export function calculate(osuText, speedRate = 1.0, odFlag = null, cvtFlag = nul
     sr *= totalNotes / (totalNotes + 60);
     sr = rescaleHigh(sr);
     sr *= 0.975;
+    if (!Number.isFinite(sr)) {
+        return createZeroResult(withGraph, lnRatio, columnCount, allCorners);
+    }
 
     // PP metrics (dart :1550-1588) — gated on withPpMetrics; never affect star.
     let ppMetrics = null;
@@ -1001,13 +1051,14 @@ export function calculate(osuText, speedRate = 1.0, odFlag = null, cvtFlag = nul
     if (withGraph) {
     const DPre = applyProximityEnvelope(allCorners, DAll, noteSeq);
     const DGraph = smoothDForGraph(allCorners, DPre, noteSeq);
+    const safeGraph = isFiniteSeries(DGraph) ? DGraph : new Array(allCorners.length).fill(0);
     const result = {
             star: sr,
             lnRatio,
             columnCount,
             graph: {
         times: Array.from(allCorners),
-        values: DGraph,
+        values: safeGraph,
             },
     };
     if (ppMetrics) result.ppMetrics = ppMetrics;

@@ -3,16 +3,17 @@ import {
     profileGraphRcFillEl,
     profileGraphRcLowerEl,
     profileGraphLnLineEl,
-    profileGraphMaxEl,
     profileGraphRcLineEl,
     profileGraphRcUpperEl,
     profileGraphWrapEl,
+    profileGraphYLabelsEl,
 } from "./appContext.js";
 
 const VIEWBOX_LEFT = 8;
 const VIEWBOX_RIGHT = 252;
 const VIEWBOX_TOP = 14;
 const VIEWBOX_BOTTOM = 104;
+const Y_TICK_COUNT = 5;
 
 function formatTime(milliseconds) {
     const totalSeconds = Math.max(0, Math.round(Number(milliseconds) / 1000));
@@ -65,6 +66,17 @@ function areaPathForSeries(times, lowerValues, upperValues, maxValue) {
     }
     return `${upperParts.join(" ")} ${lowerParts.join(" ")} Z`;
 }
+
+function renderYAxisLabels(maxValue) {
+    const labels = profileGraphYLabelsEl?.querySelectorAll("text") || [];
+    labels.forEach((label, index) => {
+        const fraction = index / Math.max(1, Y_TICK_COUNT - 1);
+        const value = maxValue * (1 - fraction);
+        label.setAttribute("y", String(VIEWBOX_TOP + fraction * (VIEWBOX_BOTTOM - VIEWBOX_TOP) + 3));
+        label.textContent = value.toFixed(1);
+    });
+}
+
 export function clearProfileGraph() {
     if (!profileGraphWrapEl) {
         return;
@@ -120,9 +132,7 @@ export function renderProfileGraph(profileGraph) {
     if (profileGraphDurationEl) {
         profileGraphDurationEl.textContent = formatTime(safeTimes[safeTimes.length - 1] - safeTimes[0]);
     }
-    if (profileGraphMaxEl) {
-        profileGraphMaxEl.textContent = maxValue.toFixed(1);
-    }
+    renderYAxisLabels(maxValue);
 
     profileGraphWrapEl.hidden = false;
     profileGraphWrapEl.classList.remove("profile-graph-enter");

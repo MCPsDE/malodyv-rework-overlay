@@ -144,6 +144,10 @@ public partial class MainWindow : Window
         }
         if (sync.Updated)
             SetRuntimeStatus("botSourceUpdated");
+        else if (sync.UsedBundledFallback)
+            SetRuntimeStatus(null, _settings.Language == "en"
+                ? $"Using verified bundled Bot card v{sync.Version}; remote update check is unavailable."
+                : $"正在使用已验证的随包 Bot 卡片 v{sync.Version}；当前无法检查远程更新。");
         else if (sync.Error is not null)
             SetRuntimeStatus(null, _settings.Language == "en"
                 ? $"Using bundled bot card; remote sync failed: {sync.Error}"

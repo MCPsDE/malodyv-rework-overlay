@@ -40,8 +40,7 @@
 
 .profile-graph-title,
 .profile-graph-legend,
-.profile-graph-axis,
-.profile-graph-max {
+.profile-graph-axis {
     font-family: "Outfit", sans-serif;
 }
 
@@ -102,6 +101,14 @@
     stroke: rgba(194, 218, 255, 0.28);
 }
 
+.profile-graph-y-labels {
+    fill: #7e8aa5;
+    font-family: "Outfit", sans-serif;
+    font-size: 7px;
+    font-weight: 600;
+    text-anchor: start;
+}
+
 .profile-graph-line {
     fill: none;
     stroke-width: 2.2;
@@ -137,16 +144,6 @@
     color: #8592ad;
     font-size: 10px;
     line-height: 12px;
-}
-
-.profile-graph-max {
-    position: absolute;
-    top: 30px;
-    left: 13px;
-    color: #7e8aa5;
-    font-size: 9px;
-    line-height: 1;
-    pointer-events: none;
 }
 
 .profile-graph-enter {
