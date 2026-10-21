@@ -1079,7 +1079,11 @@ function buildFixedDensityProfile(mergedSeq, displayLanes, lnLanes, od, rate, n,
         ? Math.max(0.0, mapInvert(Math.log(value) - FIT_E_CHORD * chord - FIT_D_LNN * lnN))
         : 0.0);
     const rcEnvelope = buildRcEnvelope(times, rawRcProfile);
-    const lnValues = buildLnProfile(lnLanes, od, rate, times, n);
+    const rawLnValues = buildLnProfile(lnLanes, od, rate, times, n);
+    // LN is sampled from discrete hold/release events. Apply the same local
+    // averaging window used after the RC envelope so nearby event spikes do
+    // not turn the thin LN trace into an opaque band.
+    const lnValues = smoothProfileSeries(times, rawLnValues, RC_PROFILE_SMOOTH_WINDOW_MS);
     return {
         times,
         rcValues: rcEnvelope.center,

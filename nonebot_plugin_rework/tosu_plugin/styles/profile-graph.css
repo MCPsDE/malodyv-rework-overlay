@@ -136,6 +136,8 @@
 
 .profile-graph-line-ln {
     stroke: #ffc27a;
+    stroke-width: 1.5;
+    opacity: 0.92;
     filter: drop-shadow(0 0 2px rgba(255, 194, 122, 0.38));
 }
 
