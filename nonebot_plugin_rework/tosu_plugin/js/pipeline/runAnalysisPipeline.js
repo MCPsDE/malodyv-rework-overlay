@@ -70,6 +70,37 @@ function sanitizePatternResult(result) {
     };
 }
 
+function buildSunnyProfileGraph(graph) {
+    const sourceTimes = Array.isArray(graph?.times) ? graph.times : [];
+    const sourceValues = Array.isArray(graph?.values) ? graph.values : [];
+    const length = Math.min(sourceTimes.length, sourceValues.length);
+    if (length < 2) {
+        return null;
+    }
+
+    const times = [];
+    const values = [];
+    for (let index = 0; index < length; index += 1) {
+        const time = Number(sourceTimes[index]);
+        const value = Number(sourceValues[index]);
+        if (!Number.isFinite(time)) {
+            continue;
+        }
+        times.push(time);
+        values.push(Number.isFinite(value) ? Math.max(0, value) : 0);
+    }
+    if (times.length < 2) {
+        return null;
+    }
+
+    return {
+        source: "SunnyRework",
+        times,
+        values,
+        maxValue: Math.max(0, ...values),
+    };
+}
+
 /**
  * 运行完整分析管线（异步：ett WASM 与 interlude 均为异步）。
  *
@@ -285,6 +316,22 @@ export async function runAnalysisPipeline({ rawText, estimatorAlgorithm, options
         try {
             fixedDensityProfileResult = calculateFixedDensityProfile(parser, options.speedRate ?? 1);
             profileGraph = fixedDensityProfileResult.profile;
+        } catch {
+            profileGraph = null;
+        }
+    }
+    if (options.withProfileGraph === true && !isFourKeyMania) {
+        try {
+            const selectedSunnyGraph = selectedRework?.graph
+                && (actualEstimatorAlgorithm === "Sunny" || estimatorAlgorithm === "Sunny" || estimatorAlgorithm === "Companella")
+                ? selectedRework
+                : null;
+            const sunnyGraphResult = selectedSunnyGraph?.graph
+                ? selectedSunnyGraph
+                : (sharedSunnyResult?.graph
+                    ? sharedSunnyResult
+                    : runSunnyEstimatorFromText(rawText, { ...options, withGraph: true }, parser));
+            profileGraph = buildSunnyProfileGraph(sunnyGraphResult?.graph);
         } catch {
             profileGraph = null;
         }

@@ -440,6 +440,41 @@ export function showNumericStarValue(starValue) {
     syncLeftUnitBadgeContrast(starText);
 }
 
+function showNumericCapsuleValue(element, value) {
+    if (!element) {
+        return;
+    }
+    element.classList.remove("category-mode");
+    animateNumericCapsuleValue(element, value);
+    const starBg = starColorFor(value);
+    const preferredText = starTextColorFor(value);
+    const starText = pickReadableTextColor(value, starBg, preferredText);
+    element.style.backgroundColor = starBg;
+    element.style.color = starText;
+    element.style.textShadow = "none";
+    element.classList.remove("high-contrast");
+    syncLeftUnitBadgeContrast(starText, element);
+}
+
+export function showReferenceMetricValues(sunnyReworkValue, osuSrValue) {
+    if (!fixedDensityLnEl) {
+        return;
+    }
+    if (starValuesEl) {
+        starValuesEl.classList.add("two-up");
+    }
+    if (fixedDensityLnColEl) {
+        fixedDensityLnColEl.hidden = false;
+    }
+    fixedDensityLnEl.hidden = false;
+    showNumericCapsuleValue(reworkStarEl, sunnyReworkValue);
+    showNumericCapsuleValue(fixedDensityLnEl, osuSrValue);
+    fixedDensityLnEl.classList.remove("has-unit");
+    fixedDensityLnEl.removeAttribute("data-unit");
+    setStarLabel(fixedDensityRcLabelEl, "SunnyRework");
+    setStarLabel(fixedDensityLnLabelEl, "OsuSR");
+}
+
 export function show6KConstValue(constValue) {
     reworkStarEl.classList.remove("category-mode");
     animateNumericCapsuleValue(reworkStarEl, constValue);

@@ -5,7 +5,7 @@ param(
 $ErrorActionPreference = "Stop"
 
 $root = (Resolve-Path $PSScriptRoot).Path
-$release = Join-Path $root "release\MalodyVReworkOverlay-1.3.15"
+$release = Join-Path $root "release\MalodyVReworkOverlay-1.3.16"
 $releaseParent = [IO.Path]::GetDirectoryName($release)
 $hostProject = Join-Path $root "host\MalodyV.ReworkOverlay.Host.csproj"
 $pluginProject = Join-Path $root "plugin\MalodyV.ReworkOverlay.Plugin.csproj"

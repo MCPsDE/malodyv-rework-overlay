@@ -52,6 +52,7 @@ import {
     hideFixedDensityLnValue,
     showMsdValue,
     showNumericStarValue,
+    showReferenceMetricValues,
     show6KConstValue,
     showReworkPpValue,
     renderFullModeSeparators,
@@ -376,7 +377,7 @@ export async function fetchBeatmapFile(reason) {
         pp: contentBarShows("ReworkPP") || state.srText === "ReworkPP",
     };
     // 缓存键加版本段：曲线与右上角参考星数均为新增数据，旧快照必须失效。
-    const CACHE_KEY_STAR_UNIFIED_VERSION = "profile-caption-v3-multimode";
+    const CACHE_KEY_STAR_UNIFIED_VERSION = "profile-caption-v4-sunny-profile";
     const cacheKey = `${CACHE_KEY_STAR_UNIFIED_VERSION}|${state.estimatorAlgorithm}|${state.lastBeatmapIdentity}|${state.modSignature}`;
     const isMetaDegraded = String(state.lastBeatmapIdentity || "").startsWith("meta:");
     let cached = null;
@@ -1083,9 +1084,17 @@ export async function fetchBeatmapFile(reason) {
         // Fixed Density v1 的第二个框（ln_value）仅在选中该算法时出现，其余模式复位隐藏。
         hideFixedDensityLnValue();
 
+        const isNonFourKeyMania = String(parsedInfo.gameMode ?? "0") === "3"
+            && !isFourKeyMania({
+                ...parsedInfo,
+                columnCount: parsedInfo.columnCount ?? rework?.columnCount,
+            });
+
         // 6K 定数: force override left capsule when enabled and map is 6K —
         // but never override an explicit ReworkPP / Fixed Density v1 srText selection.
-        if (sixKConst !== null
+        if (isNonFourKeyMania) {
+            showReferenceMetricValues(referenceMetrics?.sunnyRework, referenceMetrics?.osuSr);
+        } else if (sixKConst !== null
             && state.srText !== "ReworkPP"
             && state.srText !== "Fixed Density v1") {
             show6KConstValue(sixKConst);

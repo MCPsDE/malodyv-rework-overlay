@@ -7,6 +7,8 @@ import {
     profileGraphRcUpperEl,
     profileGraphWrapEl,
     profileGraphYLabelsEl,
+    profileGraphLegendRcEl,
+    profileGraphLegendLnEl,
 } from "./appContext.js";
 
 const VIEWBOX_LEFT = 8;
@@ -77,6 +79,17 @@ function renderYAxisLabels(maxValue) {
     });
 }
 
+function setGraphLegend(source) {
+    const isSunny = source === "SunnyRework";
+    const rcLabel = profileGraphLegendRcEl?.querySelector("span");
+    if (rcLabel) {
+        rcLabel.textContent = isSunny ? "SunnyRework" : "RC";
+    }
+    if (profileGraphLegendLnEl) {
+        profileGraphLegendLnEl.hidden = isSunny;
+    }
+}
+
 export function clearProfileGraph() {
     if (!profileGraphWrapEl) {
         return;
@@ -87,10 +100,13 @@ export function clearProfileGraph() {
     if (profileGraphRcUpperEl) profileGraphRcUpperEl.setAttribute("d", "");
     if (profileGraphRcLowerEl) profileGraphRcLowerEl.setAttribute("d", "");
     if (profileGraphLnLineEl) profileGraphLnLineEl.setAttribute("d", "");
+    setGraphLegend("FixedDensity");
 }
 
 export function renderProfileGraph(profileGraph) {
     const times = Array.isArray(profileGraph?.times) ? profileGraph.times : [];
+    const isSunnyProfile = profileGraph?.source === "SunnyRework";
+    const sunnyValues = Array.isArray(profileGraph?.values) ? profileGraph.values : [];
     const rcValues = Array.isArray(profileGraph?.rcCenterValues)
         ? profileGraph.rcCenterValues
         : (Array.isArray(profileGraph?.rcValues) ? profileGraph.rcValues : []);
@@ -101,7 +117,9 @@ export function renderProfileGraph(profileGraph) {
         ? profileGraph.rcUpperValues
         : rcValues;
     const lnValues = Array.isArray(profileGraph?.lnValues) ? profileGraph.lnValues : [];
-    const length = Math.min(times.length, rcValues.length, rcLowerValues.length, rcUpperValues.length, lnValues.length);
+    const length = isSunnyProfile
+        ? Math.min(times.length, sunnyValues.length)
+        : Math.min(times.length, rcValues.length, rcLowerValues.length, rcUpperValues.length, lnValues.length);
 
     if (!profileGraphWrapEl || length < 2) {
         clearProfileGraph();
@@ -109,26 +127,28 @@ export function renderProfileGraph(profileGraph) {
     }
 
     const safeTimes = times.slice(0, length);
+    const safeSunnyValues = sunnyValues.slice(0, length);
     const safeRcValues = rcValues.slice(0, length);
     const safeRcLowerValues = rcLowerValues.slice(0, length);
     const safeRcUpperValues = rcUpperValues.slice(0, length);
     const safeLnValues = lnValues.slice(0, length);
     let maxValue = Math.max(0, Number(profileGraph.maxValue) || 0);
-    for (const value of safeRcValues) {
+    for (const value of (isSunnyProfile ? safeSunnyValues : safeRcValues)) {
         maxValue = Math.max(maxValue, Number(value) || 0);
     }
-    for (const value of safeRcUpperValues) {
+    for (const value of (isSunnyProfile ? [] : safeRcUpperValues)) {
         maxValue = Math.max(maxValue, Number(value) || 0);
     }
-    for (const value of safeLnValues) {
+    for (const value of (isSunnyProfile ? [] : safeLnValues)) {
         maxValue = Math.max(maxValue, Number(value) || 0);
     }
 
-    profileGraphRcLineEl?.setAttribute("d", pathForSeries(safeTimes, safeRcValues, maxValue));
-    profileGraphRcFillEl?.setAttribute("d", areaPathForSeries(safeTimes, safeRcLowerValues, safeRcUpperValues, maxValue));
-    profileGraphRcUpperEl?.setAttribute("d", pathForSeries(safeTimes, safeRcUpperValues, maxValue));
-    profileGraphRcLowerEl?.setAttribute("d", pathForSeries(safeTimes, safeRcLowerValues, maxValue));
-    profileGraphLnLineEl?.setAttribute("d", pathForSeries(safeTimes, safeLnValues, maxValue));
+    profileGraphRcLineEl?.setAttribute("d", pathForSeries(safeTimes, isSunnyProfile ? safeSunnyValues : safeRcValues, maxValue));
+    profileGraphRcFillEl?.setAttribute("d", isSunnyProfile ? "" : areaPathForSeries(safeTimes, safeRcLowerValues, safeRcUpperValues, maxValue));
+    profileGraphRcUpperEl?.setAttribute("d", isSunnyProfile ? "" : pathForSeries(safeTimes, safeRcUpperValues, maxValue));
+    profileGraphRcLowerEl?.setAttribute("d", isSunnyProfile ? "" : pathForSeries(safeTimes, safeRcLowerValues, maxValue));
+    profileGraphLnLineEl?.setAttribute("d", isSunnyProfile ? "" : pathForSeries(safeTimes, safeLnValues, maxValue));
+    setGraphLegend(isSunnyProfile ? "SunnyRework" : "FixedDensity");
     if (profileGraphDurationEl) {
         profileGraphDurationEl.textContent = formatTime(safeTimes[safeTimes.length - 1] - safeTimes[0]);
     }
