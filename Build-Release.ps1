@@ -5,7 +5,7 @@ param(
 $ErrorActionPreference = "Stop"
 
 $root = (Resolve-Path $PSScriptRoot).Path
-$release = Join-Path $root "release\MalodyVReworkOverlay-1.3.16"
+$release = Join-Path $root "release\MalodyVReworkOverlay-1.3.17"
 $releaseParent = [IO.Path]::GetDirectoryName($release)
 $hostProject = Join-Path $root "host\MalodyV.ReworkOverlay.Host.csproj"
 $pluginProject = Join-Path $root "plugin\MalodyV.ReworkOverlay.Plugin.csproj"
@@ -120,12 +120,15 @@ Copy-Item -LiteralPath (Join-Path $root "bepinex-bot-manifest.json") `
 
 $pluginHash = (Get-FileHash -LiteralPath (Join-Path $releaseResolved "MalodyV.ReworkOverlay.Plugin.dll") -Algorithm SHA256).Hash
 $hostHash = (Get-FileHash -LiteralPath (Join-Path $hostRelease "MalodyV.ReworkOverlay.exe") -Algorithm SHA256).Hash
+$hostAssemblyHash = (Get-FileHash -LiteralPath (Join-Path $hostRelease "MalodyV.ReworkOverlay.dll") -Algorithm SHA256).Hash
 $hostVersion = ([xml](Get-Content -LiteralPath $hostProject -Raw)).Project.PropertyGroup.Version | Select-Object -First 1
 $manifest = [ordered]@{
     version = $hostVersion
     pluginSha256 = $pluginHash
     hostSha256 = $hostHash
+    hostAssemblySha256 = $hostAssemblyHash
     botDirectorySha256 = $localBotHash
+    packageUrl = "https://github.com/MCPsDE/malodyv-rework-overlay/releases/download/v$hostVersion/MalodyVReworkOverlay-$hostVersion.zip"
     downloadUrl = "https://github.com/MCPsDE/malodyv-rework-overlay"
 }
 $manifestPath = Join-Path $root "manifest.json"

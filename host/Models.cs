@@ -75,9 +75,6 @@ internal sealed class OverlaySettings
     public double Height { get; set; } = 700;
     public string ToggleHotkey { get; set; } = "Ctrl+Shift+F8";
     public string Language { get; set; } = "zh-CN";
-    public bool UpdateCheckEnabled { get; set; } = true;
-    public string UpdateManifestUrl { get; set; } =
-        "https://raw.githubusercontent.com/MCPsDE/malodyv-rework-overlay/main/manifest.json";
     public bool BotPluginSyncEnabled { get; set; } = true;
     public string BotPluginManifestUrl { get; set; } =
         "https://raw.githubusercontent.com/MCPsDE/nonebot-plugin-for-osumania4k/main/bepinex-bot-manifest.json";

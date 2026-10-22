@@ -47,6 +47,10 @@ public partial class MainWindow : Window
             ["hotkeyConflict"] = ("快捷键无法注册，可能已被占用", "Shortcut could not be registered; it may be in use"),
             ["hotkeyChanged"] = ("卡片快捷键已更新", "Card shortcut updated"),
             ["difficulty"] = ("难度", "Difficulty"),
+            ["updateWaiting"] = ("已检测到更新，退出游戏后自动安装", "Update detected; installs automatically after the game exits"),
+            ["updateDownloading"] = ("正在自动下载并校验更新…", "Downloading and verifying the update..."),
+            ["updateInstalling"] = ("正在自动更新，控制台将重新启动…", "Installing update; the controls will restart..."),
+            ["updateFailed"] = ("自动更新暂未完成，下次启动会重试", "Automatic update could not finish; retrying next launch"),
         };
 
     private readonly OverlaySettings _settings = SettingsStore.Load();
@@ -63,6 +67,10 @@ public partial class MainWindow : Window
     private string? _runtimeStatusKey;
     private string? _runtimeStatusDetail;
     private int _selectionGeneration;
+    private readonly CancellationTokenSource _stopUpdate = new();
+    private Task? _updateTask;
+    private bool _updateScheduled;
+    private string? _updateStatusKey;
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool RegisterHotKey(IntPtr handle, int id, uint modifiers, uint virtualKey);
@@ -96,6 +104,7 @@ public partial class MainWindow : Window
         Loaded += MainWindow_Loaded;
         Closed += (_, _) =>
         {
+            _stopUpdate.Cancel();
             UnregisterToggleHotkey();
             _overlay.Close();
             _runtime.Dispose();
@@ -104,6 +113,13 @@ public partial class MainWindow : Window
 
     private async void MainWindow_Loaded(object sender, RoutedEventArgs e)
     {
+        FitControls();
+        if (App.IsUpdateRecovery)
+        {
+            _updateStatusKey = "updateFailed";
+            SetRuntimeStatus(_updateStatusKey);
+        }
+        BeginAutomaticUpdate();
         var cardIndex = Path.Combine(AppContext.BaseDirectory,
             "nonebot_plugin_rework", "tosu_plugin", "index.html");
         var runtimeStarted = false;
@@ -154,16 +170,68 @@ public partial class MainWindow : Window
                 : $"当前使用随包 Bot 卡片；远程同步失败：{sync.Error}");
         else if (_settings.BotPluginSyncEnabled && !string.IsNullOrWhiteSpace(_settings.BotPluginManifestUrl))
             SetRuntimeStatus("botSourceCurrent");
-        var update = await UpdateChecker.CheckAsync(_settings);
-        if (update is null || !IsVisible)
-            return;
+    }
 
-        var english = _settings.Language == "en";
-        var title = english ? "MalodyV Rework Overlay update" : "MalodyV 难度卡片更新提示";
-        var message = english
-            ? $"A different or newer build was found.\nLocal: {update.LocalVersion}\nRemote: {update.RemoteVersion}\n\nYou can close this message and continue using the current build."
-            : $"检测到远程版本更新或本地文件不一致。\n本地：{update.LocalVersion}\n远程：{update.RemoteVersion}\n\n可以关闭此提示，继续使用当前版本。";
-        MessageBox.Show(this, message, title, MessageBoxButton.OK, MessageBoxImage.Information);
+    private void BeginAutomaticUpdate()
+    {
+        if (!App.IsUpdateRecovery && !_updateScheduled && (_updateTask is null || _updateTask.IsCompleted))
+            _updateTask = RunAutomaticUpdateAsync();
+    }
+
+    private async Task RunAutomaticUpdateAsync()
+    {
+        try
+        {
+            var cancellationToken = _stopUpdate.Token;
+            var manifest = await Task.Run(() => UpdateChecker.CheckAsync(cancellationToken), cancellationToken);
+            if (manifest is null)
+                return;
+            var pluginRoot = Directory.GetParent(AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar))!.FullName;
+            AutomaticUpdater.ValidatePluginRoot(pluginRoot);
+            var gameExe = Path.Combine(Directory.GetParent(Directory.GetParent(pluginRoot)!.FullName)!.FullName, "Malody V.exe");
+            _updateStatusKey = "updateWaiting";
+            SetRuntimeStatus(_updateStatusKey);
+            foreach (var game in AutomaticUpdater.FindProcesses("Malody V", gameExe))
+            {
+                using (game)
+                    await game.WaitForExitAsync(cancellationToken);
+            }
+            _updateStatusKey = "updateDownloading";
+            SetRuntimeStatus(_updateStatusKey);
+            var update = await Task.Run(() => AutomaticUpdater.PrepareAsync(manifest, cancellationToken), cancellationToken);
+            ReadSettingsFromControls();
+            SettingsStore.Save(_settings);
+            AutomaticUpdater.StartInstaller(update);
+            _updateScheduled = true;
+            _updateStatusKey = "updateInstalling";
+            SetRuntimeStatus(_updateStatusKey);
+        }
+        catch (OperationCanceledException) when (_stopUpdate.IsCancellationRequested)
+        {
+        }
+        catch (Exception exception)
+        {
+            _updateStatusKey = "updateFailed";
+            SetRuntimeStatus(_updateStatusKey);
+            RuntimeStatus.ToolTip = exception.Message;
+        }
+    }
+
+    private void FitControls()
+    {
+        ControlSizing.FitWindow(this,
+            new FrameworkElement[] { WindowTitle, WindowActions },
+            new FrameworkElement[] { WindowSubtitle, ConnectionBadge },
+            new FrameworkElement[] { EnabledBox, HotkeyButton },
+            new FrameworkElement[] { TopmostBox, DragBox },
+            new FrameworkElement[] { HideDuringPlayBox },
+            new FrameworkElement[] { SaveButton });
+    }
+
+    protected override void OnDpiChanged(DpiScale oldDpi, DpiScale newDpi)
+    {
+        base.OnDpiChanged(oldDpi, newDpi);
+        FitControls();
     }
 
     protected override void OnSourceInitialized(EventArgs e)
@@ -220,6 +288,7 @@ public partial class MainWindow : Window
         ConnectionState.Text = _connected ? T("connected") : T("waiting");
         ConnectionDot.Fill = _connected ? (Brush)FindResource("Accent") : (Brush)FindResource("Muted");
         RuntimeStatus.Text = _runtimeStatusDetail ?? (_runtimeStatusKey is null ? T("ready") : T(_runtimeStatusKey));
+        Dispatcher.BeginInvoke(FitControls);
     }
 
     private void Runtime_StatusChanged(string status)
@@ -300,17 +369,7 @@ public partial class MainWindow : Window
 
     private void Runtime_PluginIntegrityMismatch(SelectionMessage message)
     {
-        Dispatcher.BeginInvoke(() =>
-        {
-            if (!IsVisible)
-                return;
-            var english = _settings.Language == "en";
-            var title = english ? "MalodyV Rework Overlay update" : "MalodyV 难度卡片更新提示";
-            var text = english
-                ? $"The BepInEx plugin differs from the published build.\nLocal: {message.PluginVersion} ({message.PluginSha256})\nRemote: {message.RemotePluginVersion} ({message.RemotePluginSha256})\n\nYou can close this message and continue using the current build."
-                : $"检测到 BepInEx 插件版本或文件哈希与远程发布不一致。\n本地：{message.PluginVersion}（{message.PluginSha256}）\n远程：{message.RemotePluginVersion}（{message.RemotePluginSha256}）\n\n可以关闭此提示，继续使用当前版本。";
-            MessageBox.Show(this, text, title, MessageBoxButton.OK, MessageBoxImage.Information);
-        });
+        Dispatcher.BeginInvoke(BeginAutomaticUpdate);
     }
 
     private void Settings_Changed(object sender, RoutedEventArgs e)
@@ -382,6 +441,7 @@ public partial class MainWindow : Window
     {
         _capturingHotkey = true;
         HotkeyButton.Content = T("pressHotkey");
+        FitControls();
         HotkeyButton.Focus();
     }
 
@@ -545,6 +605,8 @@ public partial class MainWindow : Window
 
     private void SetRuntimeStatus(string? key, string? detail = null)
     {
+        if (_updateStatusKey is not null && key != _updateStatusKey)
+            return;
         _runtimeStatusKey = key;
         _runtimeStatusDetail = detail;
         RuntimeStatus.Text = detail ?? (key is null ? T("ready") : T(key));

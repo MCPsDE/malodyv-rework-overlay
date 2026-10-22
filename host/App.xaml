@@ -4,6 +4,7 @@
              Startup="Application_Startup"
              Exit="Application_Exit">
   <Application.Resources>
+    <FontFamily x:Key="UiFont">Segoe UI, Microsoft YaHei UI</FontFamily>
     <LinearGradientBrush x:Key="WindowSurface" StartPoint="0,0" EndPoint="1,1">
       <GradientStop Color="#E61B2737" Offset="0" />
       <GradientStop Color="#D90E1623" Offset="0.52" />
@@ -32,10 +33,10 @@
         </DrawingGroup>
       </DrawingImage.Drawing>
     </DrawingImage>
-    <Style TargetType="TextBlock">
-      <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
-      <Setter Property="FontFamily" Value="Microsoft YaHei UI" />
-      <Setter Property="FontSize" Value="13" />
+    <Style TargetType="Control">
+      <Setter Property="FontFamily" Value="{StaticResource UiFont}" />
+      <Setter Property="FontSize" Value="14" />
+      <Setter Property="FontWeight" Value="Normal" />
     </Style>
     <Style TargetType="TextBox">
       <Setter Property="Background" Value="{StaticResource InputSurface}" />
@@ -45,12 +46,73 @@
       <Setter Property="CaretBrush" Value="{StaticResource Accent}" />
       <Setter Property="SelectionBrush" Value="#3A778A" />
       <Setter Property="Padding" Value="10,7" />
-      <Setter Property="FontSize" Value="13" />
+      <Setter Property="FontFamily" Value="{StaticResource UiFont}" />
+      <Setter Property="FontSize" Value="14" />
     </Style>
     <Style TargetType="CheckBox">
       <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
-      <Setter Property="FontSize" Value="13" />
+      <Setter Property="FontFamily" Value="{StaticResource UiFont}" />
+      <Setter Property="FontSize" Value="14" />
       <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="MinHeight" Value="30" />
+      <Setter Property="Background" Value="{StaticResource InputSurface}" />
+      <Setter Property="BorderBrush" Value="#8097B6C2" />
+      <Setter Property="Cursor" Value="Hand" />
+      <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="CheckBox">
+            <Border x:Name="FocusBorder" Padding="3" CornerRadius="6"
+                    BorderThickness="1" BorderBrush="Transparent" Background="Transparent">
+              <Grid>
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="Auto" />
+                  <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <Border x:Name="CheckBorder" Width="19" Height="19" CornerRadius="5"
+                        Background="{TemplateBinding Background}"
+                        BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1"
+                        VerticalAlignment="Center">
+                  <Grid>
+                    <Path x:Name="CheckMark" Data="M 4,9 L 7,12 L 14,5" Stroke="#102630"
+                          StrokeThickness="1.8" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                          Visibility="Collapsed" />
+                    <Border x:Name="IndeterminateMark" Width="9" Height="2" CornerRadius="1"
+                            Background="#102630" Visibility="Collapsed" />
+                  </Grid>
+                </Border>
+                <ContentPresenter Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Center"
+                                  RecognizesAccessKey="True" />
+              </Grid>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsChecked" Value="True">
+                <Setter TargetName="CheckBorder" Property="Background" Value="{StaticResource Accent}" />
+                <Setter TargetName="CheckBorder" Property="BorderBrush" Value="{StaticResource Accent}" />
+                <Setter TargetName="CheckMark" Property="Visibility" Value="Visible" />
+              </Trigger>
+              <Trigger Property="IsChecked" Value="{x:Null}">
+                <Setter TargetName="CheckBorder" Property="Background" Value="{StaticResource Accent}" />
+                <Setter TargetName="IndeterminateMark" Property="Visibility" Value="Visible" />
+              </Trigger>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="CheckBorder" Property="BorderBrush" Value="{StaticResource Accent}" />
+                <Setter TargetName="FocusBorder" Property="Background" Value="#143F7D8D" />
+              </Trigger>
+              <Trigger Property="IsKeyboardFocused" Value="True">
+                <Setter TargetName="FocusBorder" Property="BorderBrush" Value="{StaticResource Accent}" />
+              </Trigger>
+              <Trigger Property="IsPressed" Value="True">
+                <Setter TargetName="CheckBorder" Property="Opacity" Value="0.75" />
+              </Trigger>
+              <Trigger Property="IsEnabled" Value="False">
+                <Setter TargetName="FocusBorder" Property="Opacity" Value="0.45" />
+                <Setter Property="Cursor" Value="Arrow" />
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
     </Style>
     <Style x:Key="ToolButton" TargetType="Button">
       <Setter Property="Background" Value="#8C2A3B4D" />
@@ -58,7 +120,9 @@
       <Setter Property="BorderBrush" Value="{StaticResource Rule}" />
       <Setter Property="BorderThickness" Value="1" />
       <Setter Property="Padding" Value="12,7" />
-      <Setter Property="FontSize" Value="13" />
+      <Setter Property="FontFamily" Value="{StaticResource UiFont}" />
+      <Setter Property="FontSize" Value="14" />
+      <Setter Property="MinHeight" Value="34" />
       <Setter Property="Cursor" Value="Hand" />
       <Setter Property="Template">
         <Setter.Value>
@@ -77,6 +141,10 @@
               <Trigger Property="IsPressed" Value="True">
                 <Setter TargetName="ButtonBorder" Property="Background" Value="#D1507180" />
               </Trigger>
+              <Trigger Property="IsKeyboardFocused" Value="True">
+                <Setter TargetName="ButtonBorder" Property="BorderBrush" Value="{StaticResource Accent}" />
+                <Setter TargetName="ButtonBorder" Property="BorderThickness" Value="2" />
+              </Trigger>
               <Trigger Property="IsEnabled" Value="False">
                 <Setter TargetName="ButtonBorder" Property="Opacity" Value="0.45" />
               </Trigger>
@@ -90,6 +158,56 @@
       <Setter Property="Foreground" Value="#0A1820" />
       <Setter Property="BorderBrush" Value="{StaticResource Accent}" />
       <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+    <Style TargetType="Slider">
+      <Setter Property="Foreground" Value="{StaticResource Accent}" />
+      <Setter Property="MinHeight" Value="30" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Slider">
+            <Grid x:Name="SliderSurface" Background="Transparent">
+              <Border Height="4" Background="{StaticResource PanelSurface}" CornerRadius="2" />
+              <Track x:Name="PART_Track" Minimum="{TemplateBinding Minimum}" Maximum="{TemplateBinding Maximum}"
+                     Value="{Binding Value, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}"
+                     IsDirectionReversed="{TemplateBinding IsDirectionReversed}">
+                <Track.DecreaseRepeatButton>
+                  <RepeatButton Command="{x:Static Slider.DecreaseLarge}" Focusable="False">
+                    <RepeatButton.Template>
+                      <ControlTemplate TargetType="RepeatButton">
+                        <Border Height="4" Background="{StaticResource Accent}" CornerRadius="2" />
+                      </ControlTemplate>
+                    </RepeatButton.Template>
+                  </RepeatButton>
+                </Track.DecreaseRepeatButton>
+                <Track.IncreaseRepeatButton>
+                  <RepeatButton Command="{x:Static Slider.IncreaseLarge}" Focusable="False">
+                    <RepeatButton.Template>
+                      <ControlTemplate TargetType="RepeatButton">
+                        <Border Background="Transparent" />
+                      </ControlTemplate>
+                    </RepeatButton.Template>
+                  </RepeatButton>
+                </Track.IncreaseRepeatButton>
+                <Track.Thumb>
+                  <Thumb Width="15" Height="15" Focusable="False">
+                    <Thumb.Template>
+                      <ControlTemplate TargetType="Thumb">
+                        <Border Background="{StaticResource Accent}" BorderBrush="#D1EFF4"
+                                BorderThickness="1" CornerRadius="8" />
+                      </ControlTemplate>
+                    </Thumb.Template>
+                  </Thumb>
+                </Track.Thumb>
+              </Track>
+            </Grid>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsEnabled" Value="False">
+                <Setter TargetName="SliderSurface" Property="Opacity" Value="0.45" />
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
     </Style>
   </Application.Resources>
 </Application>

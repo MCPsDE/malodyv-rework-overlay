@@ -5,7 +5,7 @@ window, and the original `nonebot_plugin_rework` directory vendored from
 `MCPsDE/nonebot-plugin-for-osumania4k`. The card is served directly from
 `nonebot_plugin_rework/tosu_plugin`; the legacy `Card` directory is not used.
 
-Current release: `1.3.16`.
+Current release: `1.3.17`.
 
 ## Build
 
@@ -15,7 +15,7 @@ From PowerShell 7 (`pwsh`) with .NET 8 and .NET 6 SDKs installed:
 pwsh -NoProfile -File .\Build-Release.ps1
 ```
 
-The output is `release\MalodyVReworkOverlay`. Its plugin DLL is at the package
+The output is `release\MalodyVReworkOverlay-1.3.17`. Its plugin DLL is at the package
 root so BepInEx can discover it; the companion host and complete
 `nonebot_plugin_rework` directory are under `MalodyVReworkOverlay\`. Copy the
 package contents into `MalodyV\BepInEx\plugins` after BepInEx has generated the
@@ -58,9 +58,50 @@ continues offline when they match. On mismatch it downloads only the fixed
 GitHub archive, rejects unsafe ZIP paths, links, oversized archives, and
 untrusted redirects, verifies the extracted directory SHA-256, stages it, then
 replaces only `nonebot_plugin_rework`. A failed download or verification
-leaves the bundled directory in place. The game plugin independently computes its own DLL
-SHA-256 and compares it with the published `manifest.json`; a mismatch is
-reported in a dismissible prompt and never blocks play.
+leaves the bundled directory in place.
+
+Starting with 1.3.17, release updates are automatic and have no confirmation
+dialog or disable setting. At startup the host checks the fixed GitHub manifest,
+with a jsDelivr fallback, and compares the version plus the BepInEx DLL, host EXE,
+and managed host DLL hashes. Older remote versions cannot downgrade the install.
+If an update or same-version corruption is detected, it waits for the installed
+game process to exit using an OS process notification. It then downloads the
+versioned GitHub Release ZIP, validates its SHA-256 and contents, and starts the
+verified staged host in installer mode. No periodic game-state or update polling
+is added, and large downloads and extraction wait until the game has exited.
+
+The installer closes the old companion, replaces only this plugin's host directory,
+plugin DLL and release manifest, and restarts the companion. Backups and staging
+live outside `plugins` so BepInEx cannot discover duplicate plugin DLLs. Failed
+replacement rolls back the previous files; the recovery launch does not retry
+immediately, preventing restart loops. Offline use keeps the current files. User
+settings in LocalAppData and other BepInEx plugins are preserved. Installation
+failures are recorded in `%LOCALAPPDATA%\MalodyVReworkOverlay\updates\last-update.json`.
+
+The controls use shared Segoe UI / Microsoft YaHei UI typography, content-based
+minimum widths, themed checkboxes, and a matching opacity slider. The shadow
+is rendered on a separate background layer instead of rasterizing all text.
+
+To build a distribution ZIP and finalize its hash in the published manifest:
+
+```powershell
+pwsh -NoProfile -File .\scripts\Pack-Release.ps1 -Version 1.3.17
+```
+
+Upload the ZIP and SHA256SUMS to GitHub Release `v1.3.17` before publishing the
+final `manifest.json`, so a new manifest never points to a missing package.
+The ZIP contains a manifest without its own package hash; the external release
+manifest records that hash after packing, avoiding a self-referential checksum.
+
+Regression and WPF layout checks:
+
+```powershell
+dotnet run --project .\tests\OverlayChecks.csproj --configuration Release -- $PWD
+```
+
+The checks cover update rollback, corruption detection, archive path validation,
+Chinese/English controls, enlarged text, and synthetic 100/125/150/200% DPI
+rendering. Synthetic captures do not substitute for physical monitor testing.
 
 The hashes detect corruption and ensure the downloaded directory matches the
 published manifest. Because the manifest and archive are served by the same

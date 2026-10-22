@@ -1,44 +1,61 @@
 <Window x:Class="MalodyV.ReworkOverlay.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="MalodyV Rework Overlay" Icon="{StaticResource MainWindowIcon}" Width="520" MinWidth="460" MaxWidth="580"
+        Title="MalodyV Rework Overlay" Icon="{StaticResource MainWindowIcon}" Width="520" MinWidth="460"
         SizeToContent="Height" MaxHeight="700" WindowStartupLocation="CenterScreen"
         WindowStyle="None" AllowsTransparency="True" Background="Transparent"
-        FontFamily="Microsoft YaHei UI" Foreground="{StaticResource TextPrimary}"
-        TextOptions.TextFormattingMode="Ideal" TextOptions.TextRenderingMode="Grayscale"
-        UseLayoutRounding="True" SnapsToDevicePixels="True"
+        FontFamily="{StaticResource UiFont}" FontSize="14" FontWeight="Normal" Foreground="{StaticResource TextPrimary}"
+        TextOptions.TextFormattingMode="Display" TextOptions.TextRenderingMode="Grayscale"
+        UseLayoutRounding="True" SnapsToDevicePixels="False"
         PreviewKeyDown="Window_PreviewKeyDown">
-  <Border Margin="10" Background="{StaticResource WindowSurface}"
+  <Grid>
+    <Border Margin="10" Background="{StaticResource WindowSurface}" CornerRadius="16" IsHitTestVisible="False">
+      <Border.Effect>
+        <DropShadowEffect Color="#000000" BlurRadius="28" ShadowDepth="8" Opacity="0.44" />
+      </Border.Effect>
+    </Border>
+    <Border Margin="10" Background="{StaticResource WindowSurface}"
           BorderBrush="#668DE6F5" BorderThickness="1" CornerRadius="16">
-    <Border.Effect>
-      <DropShadowEffect Color="#000000" BlurRadius="28" ShadowDepth="8" Opacity="0.44" />
-    </Border.Effect>
     <Grid Margin="22">
       <Grid.RowDefinitions>
         <RowDefinition Height="Auto" />
         <RowDefinition Height="Auto" />
         <RowDefinition Height="Auto" />
       </Grid.RowDefinitions>
-      <Grid Margin="0,0,0,18">
+      <Grid x:Name="HeaderLayout" Margin="0,0,0,18">
+        <Grid.RowDefinitions>
+          <RowDefinition Height="Auto" />
+          <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
         <Grid.ColumnDefinitions>
           <ColumnDefinition Width="*" />
           <ColumnDefinition Width="Auto" />
         </Grid.ColumnDefinitions>
-        <StackPanel VerticalAlignment="Center">
-          <TextBlock x:Name="WindowTitle" Text="MalodyV Rework Overlay" FontSize="21" FontWeight="SemiBold"
+        <StackPanel VerticalAlignment="Center" Margin="0,0,14,0">
+          <TextBlock x:Name="WindowTitle" Text="MalodyV Rework Overlay" FontSize="21"
                      MouseLeftButtonDown="WindowHeader_MouseLeftButtonDown" />
+        </StackPanel>
+        <StackPanel Grid.Row="1" Margin="0,5,0,0">
           <TextBlock x:Name="WindowSubtitle" Margin="0,3,0,0" Text="Chart companion"
                      FontSize="12" Foreground="{StaticResource Muted}"
                      MouseLeftButtonDown="WindowHeader_MouseLeftButtonDown" />
-          <TextBlock x:Name="SponsorLinkText" Margin="0,7,0,0" FontSize="14" FontWeight="SemiBold">
+          <TextBlock x:Name="SponsorLinkText" Margin="0,7,0,0" FontSize="14">
             <Hyperlink x:Name="SponsorHyperlink"
                        Foreground="{StaticResource SponsorRainbow}"
                        TextDecorations="Underline"
                        Click="SponsorLink_Click">赞助支持</Hyperlink>
           </TextBlock>
         </StackPanel>
-        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-          <Border Padding="10,6" Margin="0,0,10,0" Background="{StaticResource PanelSurface}"
+        <StackPanel x:Name="WindowActions" Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+          <Button x:Name="LanguageButton" Style="{StaticResource ToolButton}" MinWidth="54"
+                  Margin="0,0,8,0" Content="EN" Click="LanguageButton_Click" />
+          <Button Style="{StaticResource ToolButton}" MinWidth="34" Padding="8,5"
+                  Content="-" Click="MinimizeButton_Click" />
+          <Button Style="{StaticResource ToolButton}" MinWidth="34" Padding="8,5"
+                  Margin="6,0,0,0" Content="×" Click="CloseButton_Click" />
+        </StackPanel>
+          <Border x:Name="ConnectionBadge" Grid.Row="1" Grid.Column="1" Padding="10,6" HorizontalAlignment="Right"
+                  VerticalAlignment="Top" Margin="0,8,0,0" Background="{StaticResource PanelSurface}"
                   BorderBrush="{StaticResource Rule}" BorderThickness="1" CornerRadius="14">
             <StackPanel Orientation="Horizontal">
               <Ellipse x:Name="ConnectionDot" Width="7" Height="7" Margin="0,0,7,0"
@@ -47,25 +64,18 @@
                          Foreground="{StaticResource Muted}" VerticalAlignment="Center" />
             </StackPanel>
           </Border>
-          <Button x:Name="LanguageButton" Style="{StaticResource ToolButton}" MinWidth="54"
-                  Height="32" Margin="0,0,8,0" Content="EN" Click="LanguageButton_Click" />
-          <Button Style="{StaticResource ToolButton}" Width="34" Height="32" Padding="0"
-                  Content="-" Click="MinimizeButton_Click" />
-          <Button Style="{StaticResource ToolButton}" Width="34" Height="32" Padding="0"
-                  Margin="6,0,0,0" Content="×" Click="CloseButton_Click" />
-        </StackPanel>
       </Grid>
       <ScrollViewer Grid.Row="1" MaxHeight="430" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
         <StackPanel>
           <TextBlock x:Name="SelectedSectionTitle" Text="当前谱面" FontSize="12"
                      Foreground="{StaticResource Accent}" FontWeight="SemiBold" />
           <TextBlock x:Name="SelectedMap" Margin="0,7,0,0" Text="尚未选择谱面"
-                     FontSize="18" FontWeight="Medium" TextWrapping="Wrap" />
+                     FontSize="18" TextWrapping="Wrap" />
           <TextBlock x:Name="SelectedPath" Margin="0,5,0,0" FontSize="12"
                      Foreground="{StaticResource Muted}" TextWrapping="Wrap" />
           <Separator Margin="0,18,0,18" Background="{StaticResource Rule}" />
           <TextBlock x:Name="OptionsTitle" Text="卡片显示" FontSize="15" FontWeight="SemiBold" />
-          <Grid Margin="0,12,0,0">
+          <Grid x:Name="CardToggleLayout" Margin="0,12,0,0">
             <Grid.ColumnDefinitions>
               <ColumnDefinition Width="*" />
               <ColumnDefinition Width="Auto" />
@@ -73,16 +83,16 @@
             <CheckBox x:Name="EnabledBox" Content="显示卡片" IsChecked="True"
                       Checked="Settings_Changed" Unchecked="Settings_Changed" />
             <Button x:Name="HotkeyButton" Grid.Column="1" Style="{StaticResource ToolButton}"
-                    MinWidth="150" Height="34" Content="Ctrl+Shift+F8" Click="HotkeyButton_Click" />
+                    MinWidth="150" Margin="14,0,0,0" Content="Ctrl+Shift+F8" Click="HotkeyButton_Click" />
           </Grid>
-          <Grid Margin="0,14,0,0">
+          <Grid x:Name="CardOptionsLayout" Margin="0,14,0,0">
             <Grid.ColumnDefinitions>
               <ColumnDefinition Width="*" />
               <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
             <CheckBox x:Name="TopmostBox" Content="始终置顶" IsChecked="True"
                       Checked="Settings_Changed" Unchecked="Settings_Changed" />
-            <CheckBox x:Name="DragBox" Grid.Column="1" Content="按住卡片拖动" IsChecked="True"
+            <CheckBox x:Name="DragBox" Grid.Column="1" Margin="14,0,0,0" Content="按住卡片拖动" IsChecked="True"
                       Checked="Settings_Changed" Unchecked="Settings_Changed" />
           </Grid>
           <CheckBox x:Name="HideDuringPlayBox" Margin="0,14,0,0"
@@ -112,8 +122,9 @@
         <TextBlock x:Name="RuntimeStatus" Text="卡片资源已就绪" VerticalAlignment="Center"
                    Foreground="{StaticResource Muted}" TextWrapping="Wrap" />
         <Button x:Name="SaveButton" Grid.Column="1" Style="{StaticResource AccentButton}"
-                MinWidth="124" Height="40" Content="保存设置" Click="SaveSettings_Click" />
+                MinWidth="124" MinHeight="40" Margin="14,0,0,0" Content="保存设置" Click="SaveSettings_Click" />
       </Grid>
     </Grid>
-  </Border>
+    </Border>
+  </Grid>
 </Window>
