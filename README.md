@@ -69,6 +69,8 @@ game process to exit using an OS process notification. It then downloads the
 versioned GitHub Release ZIP, validates its SHA-256 and contents, and starts the
 verified staged host in installer mode. No periodic game-state or update polling
 is added, and large downloads and extraction wait until the game has exited.
+The staged installer uses a distinct process name so the game's stale-companion
+cleanup cannot mistake the windowless updater for a hung control window.
 
 The installer closes the old companion, replaces only this plugin's host directory,
 plugin DLL and release manifest, and restarts the companion. Backups and staging

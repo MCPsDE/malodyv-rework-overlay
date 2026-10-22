@@ -20,9 +20,12 @@ $plan = @{ PluginRoot = $target; Manifest = $manifest }
 $planPath = Join-Path $work "plan.json"
 $plan | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $planPath -Encoding utf8NoBOM
 $updater = Join-Path $package "MalodyVReworkOverlay\MalodyV.ReworkOverlay.exe"
-$process = Start-Process -FilePath $updater -ArgumentList @("--apply-update", ('"{0}"' -f $planPath)) -PassThru -WindowStyle Hidden
+$renamedUpdater = Join-Path $package "MalodyVReworkOverlay\MalodyV.ReworkOverlay.Update.exe"
+Copy-Item -LiteralPath $updater -Destination $renamedUpdater -Force
+$process = Start-Process -FilePath $renamedUpdater -ArgumentList @("--apply-update", ('"{0}"' -f $planPath)) -PassThru -WindowStyle Hidden
 if (-not $process.WaitForExit(60000)) { throw "Staged updater did not exit within 60 seconds." }
 if ($process.ExitCode -ne 0) { throw "Staged updater exited with code $($process.ExitCode)." }
+Remove-Item -LiteralPath $renamedUpdater -Force
 $installedHash = (Get-FileHash -LiteralPath (Join-Path $target "MalodyV.ReworkOverlay.Plugin.dll") -Algorithm SHA256).Hash
 if ($installedHash -ne $manifest.pluginSha256) { throw "Installed plugin hash mismatch." }
 if ((Get-FileHash -LiteralPath (Join-Path $hostDirectory "MalodyV.ReworkOverlay.dll") -Algorithm SHA256).Hash -ne $manifest.hostAssemblySha256) {

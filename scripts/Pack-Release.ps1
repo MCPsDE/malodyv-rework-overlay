@@ -34,7 +34,7 @@ Copy-Item -LiteralPath $manifestPath -Destination $stageRoot -Force
 $packagedManifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json -AsHashtable
 $packagedManifest.Remove('packageSha256') | Out-Null
 [IO.File]::WriteAllText((Join-Path $stageRoot "manifest.json"), ($packagedManifest | ConvertTo-Json), [Text.UTF8Encoding]::new($false))
-Compress-Archive -Path (Join-Path $stageRoot "*") -DestinationPath $zipPath -CompressionLevel Optimal
+[IO.Compression.ZipFile]::CreateFromDirectory($stageRoot, $zipPath, [IO.Compression.CompressionLevel]::Optimal, $false)
 
 $hash = (Get-FileHash -LiteralPath $zipPath -Algorithm SHA256).Hash.ToUpperInvariant()
 [IO.File]::WriteAllText($sumPath, "$hash  MalodyVReworkOverlay-$Version.zip`n", [Text.UTF8Encoding]::new($false))

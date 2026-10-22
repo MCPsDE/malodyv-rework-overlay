@@ -135,7 +135,9 @@ internal static class AutomaticUpdater
     {
         var planPath = Path.Combine(update.WorkDirectory, "plan.json");
         File.WriteAllText(planPath, JsonSerializer.Serialize(new UpdatePlan(update.PluginRoot, update.Manifest)));
-        var executable = Path.Combine(update.PackageDirectory, HostDirectoryName, "MalodyV.ReworkOverlay.exe");
+        var stagedHost = Path.Combine(update.PackageDirectory, HostDirectoryName, "MalodyV.ReworkOverlay.exe");
+        var executable = Path.Combine(update.PackageDirectory, HostDirectoryName, "MalodyV.ReworkOverlay.Update.exe");
+        File.Copy(stagedHost, executable, true);
         var start = new ProcessStartInfo(executable) { UseShellExecute = false, CreateNoWindow = true };
         start.ArgumentList.Add("--apply-update");
         start.ArgumentList.Add(planPath);
